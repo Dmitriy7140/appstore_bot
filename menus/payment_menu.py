@@ -27,7 +27,7 @@ async def handle_amount(callback: CallbackQuery):
     if sh.has_available_keys():
         await callback.message.answer(
             text=(
-                f"К оплате {amount} рублей\n\n"
+                f"К оплате {RATES[int(amount)]} рублей\n\n"
                 f"Ссылка для оплаты 👇\n\n"
                 f"После оплаты дождитесь подтверждения ✅"
             ),
