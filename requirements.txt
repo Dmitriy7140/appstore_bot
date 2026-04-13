@@ -1,3 +1,5 @@
 yookassa
 aiogram
 python-dotenv
+asyncio
+gspread

@@ -1,10 +1,17 @@
+
+import asyncio
+
+import uuid
+from yookassa import Configuration, Payment
+from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
+
 RATES = {
-    500: 1500,
-    1000: 3000,
-    1250: 3750,
-    1500: 4500,
-    1750: 5250,
-    2000: 6000,
+    500: 1500.00,
+    1000: 3000.00,
+    1250: 3750.00,
+    1500: 4500.00,
+    1750: 5250.00,
+    2000: 6000.00,
 }
 SERVICE_NAMES = {
     "as" : "AppStore",
@@ -14,15 +21,13 @@ SERVICE_NAMES = {
     "xb" : "Xbox"
 }
 
-import uuid
-from yookassa import Configuration, Payment
-from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
 
 Configuration.account_id = SHOP_ID
 Configuration.secret_key = SECRET_KEY
 
 
-async def create_payment(service: str, amount: int) -> str:
+async def create_payment(service: str, amount: int, chat_id) -> tuple:
+    id_key = str(uuid.uuid4())
     payment = Payment.create({
         "amount": {
             "value": str(RATES[amount]),
@@ -30,10 +35,30 @@ async def create_payment(service: str, amount: int) -> str:
         },
         "confirmation": {
             "type": "redirect",
-            "return_url": "https://t.me/appstore_cash_bot"
+            "return_url": f"{BOT_URL}"
         },
         "capture": True,
-        "description": f"{SERVICE_NAMES[service]} пополнение на {RATES[amount]}",
-    }, uuid.uuid4())
+        "metadata": {
+            "chat_id": chat_id,
+        },
+        "description": f"{SERVICE_NAMES[service]} пополнение на {RATES[amount]} руб",
 
-    return payment.confirmation.confirmation_url
+    },id_key )
+
+    return payment.confirmation.confirmation_url, payment.id
+
+
+
+async def wait_payment(callback, get_key, payment_id):
+    while True:
+        payment = Payment.find_one(payment_id)
+
+        if payment.status == "succeeded":
+            key = get_key()
+            await callback.message.answer( "✅ Оплата прошла! Вот ваш ключ:\n\n"
+                                           f"<code>{key}</code>", parse_mode="HTML")
+            break
+        if payment.status == "canceled":
+            await callback.message.answer( "❌Платеж отменен. Попробуйте еще раз или свяжитесь с менеджером @MANAGER_2PAY")
+            break
+        await asyncio.sleep(5)

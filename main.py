@@ -13,6 +13,7 @@ async def main():
     dp.include_router(service_menu.rt)
     dp.include_router(amounts_menu.rt)
     dp.include_router(payment_menu.rt)
+    print("Бот запущен")
 
     await dp.start_polling(bot)
 
