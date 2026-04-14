@@ -1,7 +1,12 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
-from keyboards.menu_buttons import  main_menu_keyboard
+
+from keyboards.service_buttons import service_keyboard
+
+from aiogram.types import FSInputFile
+
+photo = FSInputFile("static/menus/as.png")
 
 rt = Router()
 
@@ -15,23 +20,24 @@ async def main_menu(callback: CallbackQuery):
     await show_main_menu(callback)
 
 async def show_main_menu(target: Message|CallbackQuery):
-    text = ("🎮 Добро пожаловать!\n\n"
 
-            "Пополняйте баланс быстро и без лишней головной боли 💸\n"
-            "Мы поможем закинуть деньги на:\n\n"
+    text = ("<b>📱 Поможем сменить регион в App Store с России на Турцию и пополнить за 2 минуты!</b>\n\n"
 
-            "🍏 App Store\n"
-            "🤖 Google Play\n"
-            "🎮 PlayStation\n"
-            "🟢 Xbox\n"
-            "💻 Steam\n\n"
+            "⚡️Смена региона занимает 1 минуту по инструкции\n"
+            "💵Для пополнения вы покупаете подарочный код, активируете и оплачиваете всё как было до блокировок\n"
+            "👍Вход в ваш аккаунт не нужен\n"
+            "💎iCloud+ и все ваши данные будут в полной сохранности!\n"
+            "⚡️Поддержка менеджера 24/7\n\n"
             
-            "Выбирайте платформу ниже и поехали 🚀")
+            "Официальный сайт 2pay.money\n\n"
+            
+            "<b>🇹🇷 Мы поможем вам быстро сменить регион, пополнить Apple ID и вы снова сможете оплачивать нужные приложения, игры, подписки и iCloud без лишних сложностей 👇</b>")
     if isinstance(target, Message):
-        await target.answer(text, reply_markup=main_menu_keyboard())
+        await target.answer_photo( caption=text, photo=photo, reply_markup=service_keyboard("as"), parse_mode="html")
 
     elif isinstance(target, CallbackQuery):
-        await target.message.answer(text, reply_markup=main_menu_keyboard())
+
+        await target.message.answer_photo(caption=text, photo=photo, reply_markup=service_keyboard("as"), parse_mode="html")
         await target.answer()
 
 

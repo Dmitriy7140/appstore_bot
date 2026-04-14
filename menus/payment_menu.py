@@ -4,11 +4,13 @@ from aiogram import Router
 from services.payments import create_payment, wait_payment, RATES
 from repository.sheets.sheets import Sheets
 
+
 rt = Router()
 sh = Sheets()
 
 @rt.callback_query(lambda c: "/" in c.data)
 async def handle_amount(callback: CallbackQuery):
+    service: str
     service, amount = callback.data.split("/")
 
     if amount == "any":
@@ -16,7 +18,7 @@ async def handle_amount(callback: CallbackQuery):
         await callback.answer()
         return
 
-    payment_url, payment_id = await create_payment(service, int(amount), callback.message.chat.id)
+    payment_url, payment_id = await create_payment( int(amount), chat_id= callback.message.chat.id, user_id=callback.message.from_user.id)
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -24,7 +26,8 @@ async def handle_amount(callback: CallbackQuery):
             [InlineKeyboardButton(text="📋 Меню", callback_data="main_menu")]
         ]
     )
-    if sh.has_available_keys():
+
+    if sh.has_available_keys(RATES[int(amount)]):
         await callback.message.answer(
             text=(
                 f"К оплате {RATES[int(amount)]} рублей\n\n"
