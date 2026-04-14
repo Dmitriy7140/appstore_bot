@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-AMOUNTS = [1, 500, 1000, 1250, 1500, 1750, 2000]
+AMOUNTS = [500, 1000, 1250, 1500, 1750, 2000]
 
 def amounts_keyboard(service: str) -> InlineKeyboardMarkup:
     keyboard = []
