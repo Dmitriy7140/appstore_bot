@@ -14,7 +14,7 @@ def amounts_keyboard(service: str) -> InlineKeyboardMarkup:
         for amount in AMOUNTS[i:i+2]:
             row.append(
                 InlineKeyboardButton(
-                    text=f"🇹🇷{amount}",
+                    text=f"₺{amount}",
                     callback_data=f"{service}/{amount}"
                 )
             )
