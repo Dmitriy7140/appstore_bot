@@ -45,6 +45,7 @@ async def create_payment( amount: int, chat_id, user_id) -> tuple:
         "capture": True,
         "metadata": {
             "chat_id": chat_id,
+            "user_id": user_id,
         },
         "description": f"Оплата заказа user_id ({user_id})",
 
@@ -73,9 +74,10 @@ async def wait_payment(callback, get_key, payment_id):
                                                                                                                                        [InlineKeyboardButton(
                                                                                                                                            text="Как поменять регион?",
                                                                                                                                            callback_data="asfaq_region")]]))
+            user_id = int(payment.metadata["user_id"])
             await send_transaction_notice(
                 bot,
-                telegram_id=int(callback.message.from_user.id),
+                telegram_id=user_id,
                 tx_id=payment.id,
                 amount=int(payment.amount.value),
                 code=key
