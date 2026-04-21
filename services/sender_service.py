@@ -56,10 +56,10 @@ async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, c
 
     text = (
         f"💰 Новая транзакция\n\n"
-        f"👤 <a href='tg://user?id=5777995768'>Пользователь:</a> {telegram_id}\n"
-        f"🆔 ID Транзакции:<tg-spoiler>{tx_id}</tg-spoiler>\n"
-        f"🔑 Код:<tg-spoiler> {code} </tg-spoiler>\n"
-        f"💵 Сумма: {amount}"
+        f"👤 <a href='{user_link}'>Пользователь:{telegram_id}</a>\n\n"
+        f"🆔 ID Транзакции:<tg-spoiler>{tx_id}</tg-spoiler>\n\n"
+        f"🔑 Код:<tg-spoiler> {code} </tg-spoiler>\n\n"
+        f"💵 Сумма: {amount} RUB"
     )
 
     await bot.send_message(ADMIN_CHAT_ID, text, parse_mode="html")
