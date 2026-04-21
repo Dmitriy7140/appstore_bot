@@ -10,8 +10,8 @@ bot = Bot(token=BOT_TOKEN)
 async def main():
 
     dp = Dispatcher()
-    dp.message.middleware(database.UserMiddleware)
-    dp.callback_query.middleware(database.UserMiddleware)
+    dp.message.middleware(database.UserMiddleware())
+    dp.callback_query.middleware(database.UserMiddleware())
     dp.include_router(start.rt)
     dp.include_router(service_menu.rt)
     dp.include_router(amounts_menu.rt)
