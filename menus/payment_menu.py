@@ -2,11 +2,11 @@ import asyncio
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram import Router
 from services.payments import create_payment, wait_payment, RATES
-from repository.sheets.sheets import Sheets
+from repository.sheets.sheets import sheets
 
 
 rt = Router()
-sh = Sheets()
+
 
 @rt.callback_query(lambda c: "/" in c.data)
 async def handle_amount(callback: CallbackQuery):
@@ -27,7 +27,7 @@ async def handle_amount(callback: CallbackQuery):
         ]
     )
 
-    if sh.has_available_keys(RATES[int(amount)]):
+    if sheets.has_available_keys(RATES[int(amount)]):
         await callback.message.answer(
             text=(
                 f"К оплате {RATES[int(amount)]} рублей\n\n"
@@ -41,7 +41,7 @@ async def handle_amount(callback: CallbackQuery):
         asyncio.create_task(
             wait_payment(
                 callback,
-                sh.get_key,
+                sheets.get_key,
                 payment_id
             )
         )

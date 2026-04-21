@@ -6,7 +6,10 @@ import uuid
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from yookassa import Configuration, Payment
 from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
+from config.utils import logger
 
+from services.sender_service import send_transaction_notice
+from main import bot
 RATES = {1:1,
     500: 1000.00,
     1000: 2000.00,
@@ -52,11 +55,13 @@ async def create_payment( amount: int, chat_id, user_id) -> tuple:
 
 
 async def wait_payment(callback, get_key, payment_id):
+    user_id=callback.message.from_user.id
     timeout = 11*60
     start_time= asyncio.get_event_loop().time()
     while True:
         if asyncio.get_event_loop().time() - start_time > timeout:
             await callback.message.answer("⌛ Время оплаты истекло")
+            logger.error(f"Время оплаты истекло у {user_id}")
             return
         payment = Payment.find_one(payment_id)
 
@@ -64,9 +69,21 @@ async def wait_payment(callback, get_key, payment_id):
             key = get_key(int(payment.amount.value))
 
             await callback.message.answer( "✅ Оплата прошла! Вот ваш ключ:\n\n"
-                                           f"<code>{key}</code>", parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Как активировать код?", callback_data="as_faq")]]))
+                                           f"<code>{key}</code>", parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Как активировать код?", callback_data="asfaq_code")],
+                                                                                                                                       [InlineKeyboardButton(
+                                                                                                                                           text="Как поменять регион?",
+                                                                                                                                           callback_data="asfaq_region")]]))
+            await send_transaction_notice(
+                bot,
+                telegram_id=int(callback.message.from_user.id),
+                tx_id=payment.id,
+                amount=int(payment.amount.value),
+                code=key
+            )
+            logger.info(f"Оплата подтверждена! user_id:{user_id}, amount:{payment.amount}")
             break
         if payment.status == "canceled":
             await callback.message.answer( "❌Платеж отменен. Попробуйте еще раз или свяжитесь с менеджером @MANAGER_2PAY")
+            logger.error(f"Оплата была отменена! user_id:{user_id}")
             break
         await asyncio.sleep(5)

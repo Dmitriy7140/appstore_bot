@@ -3,3 +3,4 @@ aiogram
 python-dotenv
 asyncio
 gspread
+asyncpg

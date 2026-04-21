@@ -15,6 +15,7 @@ async def start(message: Message):
     await show_main_menu(message)
 
 
+
 @rt.callback_query(lambda c: c.data == "main_menu")
 async def main_menu(callback: CallbackQuery):
     await show_main_menu(callback)
