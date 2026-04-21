@@ -50,7 +50,7 @@ async def create_payment( amount: int, chat_id, user_id) -> tuple:
         "description": f"Оплата заказа user_id ({user_id})",
 
     },id_key )
-
+    logger.info(f"создали транзакцию для айди {user_id}")
     return payment.confirmation.confirmation_url, payment.id
 
 
@@ -75,6 +75,7 @@ async def wait_payment(callback, get_key, payment_id):
                                                                                                                                            text="Как поменять регион?",
                                                                                                                                            callback_data="asfaq_region")]]))
             user_id = int(payment.metadata["user_id"])
+            logger.info(f"Отправляем транзакцию для айди {user_id}")
             await send_transaction_notice(
                 bot,
                 telegram_id=user_id,

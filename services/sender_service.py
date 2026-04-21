@@ -48,7 +48,7 @@ async def lazy_send_photo(callback, service: str, keyboard:InlineKeyboardMarkup)
     else:
         SERVICES[service]["file_id"] = file_id
 
-async def send_transaction_notice(bot,telegram_id:int, tx_id:str, amount:int, code:str):
+async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, code:str):
     await add_transaction(telegram_id, tx_id, amount)
 
     # 2. отправляем уведомление админу
