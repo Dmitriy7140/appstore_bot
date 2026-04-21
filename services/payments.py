@@ -83,7 +83,7 @@ async def wait_payment(callback, get_key, payment_id):
                 amount=int(payment.amount.value),
                 code=key
             )
-            logger.info(f"Оплата подтверждена! user_id:{user_id}, amount:{payment.amount}")
+            logger.info(f"Оплата подтверждена! user_id:{user_id}, amount:{payment.amount.value}")
             break
         if payment.status == "canceled":
             await callback.message.answer( "❌Платеж отменен. Попробуйте еще раз или свяжитесь с менеджером @MANAGER_2PAY")
