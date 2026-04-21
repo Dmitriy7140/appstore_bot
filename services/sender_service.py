@@ -2,7 +2,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import FSInputFile, InlineKeyboardMarkup
 
 from config.config_messages import SERVICES, AMOUNTS
-from config.config_env import ADMIN_CHAT_ID
+from config.config_env import ADMIN_CHAT_ID, TEST_MODE
 from repository.database.database import add_transaction
 
 
@@ -55,10 +55,10 @@ async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, c
     user_link = f"tg://user?id={telegram_id}"
 
     text = (
-        f"💰 Новая транзакция\n\n"
-        f"👤 <a href='{user_link}'>Пользователь:{telegram_id}</a>\n\n"
-        f"🆔 ID Транзакции:<tg-spoiler>{tx_id}</tg-spoiler>\n\n"
-        f"🔑 Код:<tg-spoiler> {code} </tg-spoiler>\n\n"
+        f"💰 Новая {"тестовая " if TEST_MODE else ""}транзакция!\n\n"
+        f"👤 <a href='{user_link}'>Пользователь: {telegram_id}</a>\n\n"
+        f"🆔 ID Транзакции: <tg-spoiler>{tx_id}</tg-spoiler>\n\n"
+        f"🔑 Код: <tg-spoiler> {"тест" if TEST_MODE else code} </tg-spoiler>\n\n"
         f"💵 Сумма: {amount} RUB"
     )
 
