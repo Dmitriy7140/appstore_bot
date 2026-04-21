@@ -18,7 +18,7 @@ async def handle_amount(callback: CallbackQuery):
         await callback.answer()
         return
 
-    payment_url, payment_id = await create_payment( int(amount), chat_id= callback.message.chat.id, user_id=callback.message.from_user.id)
+    payment_url, payment_id = await create_payment( int(amount), chat_id= callback.message.chat.id, user_id=callback.from_user.id)
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[

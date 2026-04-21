@@ -56,13 +56,13 @@ async def create_payment( amount: int, chat_id, user_id) -> tuple:
 
 
 async def wait_payment(callback, get_key, payment_id):
-    user_id=callback.message.from_user.id
+
     timeout = 11*60
     start_time= asyncio.get_event_loop().time()
     while True:
         if asyncio.get_event_loop().time() - start_time > timeout:
             await callback.message.answer("⌛ Время оплаты истекло")
-            logger.error(f"Время оплаты истекло у {user_id}")
+            logger.error(f"Время оплаты истекло у {callback.from_user.id}")
             return
         payment = Payment.find_one(payment_id)
 
@@ -87,6 +87,6 @@ async def wait_payment(callback, get_key, payment_id):
             break
         if payment.status == "canceled":
             await callback.message.answer( "❌Платеж отменен. Попробуйте еще раз или свяжитесь с менеджером @MANAGER_2PAY")
-            logger.error(f"Оплата была отменена! user_id:{user_id}")
+            logger.error(f"Оплата была отменена! user_id:{callback.from_user.id}")
             break
         await asyncio.sleep(5)
