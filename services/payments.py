@@ -11,12 +11,12 @@ from config.utils import logger
 from services.sender_service import send_transaction_notice
 from main import bot
 RATES = {1:1,
-    500: 1000.00,
-    1000: 2000.00,
-    1250: 2500.00,
-    1500: 3000.00,
-    1750: 3500.00,
-    2000: 4000.00,
+    500: 1500.00,
+    1000: 3000.00,
+    1250: 3750.00,
+    1500: 4500.00,
+    1750: 5250.00,
+    2000: 6000.00,
 }
 SERVICE_NAMES = {
     "as" : "AppStore",
