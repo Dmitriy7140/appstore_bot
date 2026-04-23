@@ -16,18 +16,25 @@ class UserMiddleware(BaseMiddleware):
         event: Any,
         data: Dict[str, Any]
     ):
+        if not hasattr(event, "from_user") or event.from_user is None:
+            return await handler(event, data)
+
         user_id = event.from_user.id
         p = get_pool()
 
         async with p.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO users (telegram_id)
-                VALUES ($1)
-                ON CONFLICT (telegram_id) DO NOTHING
-            """, user_id)
-        logger.info(f"Удостоверились, что {user_id} есть в базе.")
-        return await handler(event, data)
+            exists = await conn.fetchval(
+                "SELECT 1 FROM users WHERE telegram_id = $1",
+                user_id
+            )
 
+            if not exists:
+                await conn.execute("""
+                    INSERT INTO users (telegram_id, link)
+                    VALUES ($1, NULL)
+                """, user_id)
+
+        return await handler(event, data)
 
 # -------------------------
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ
@@ -70,3 +77,39 @@ async def add_transaction(telegram_id: int, tx_id: str, amount: int):
                 WHERE telegram_id = $2
             """, amount, telegram_id)
             logger.info("Обновили транзакции в базе!")
+
+async def add_client_source(telegram_id: int, payload: str | None):
+    p = get_pool()
+
+    async with p.acquire() as conn:
+
+        # 1. фиксируем пользователя + first-touch source
+        await conn.execute("""
+            UPDATE users
+            SET
+                
+                link = COALESCE(link, $2)
+            WHERE telegram_id = $1
+        """, telegram_id, payload)
+
+        # 2. если есть рефка — обрабатываем invite_links
+        if payload:
+            await conn.execute("""
+                INSERT INTO invite_links (link,followed)
+                VALUES ($1,1)
+                ON CONFLICT (link)
+                DO UPDATE SET followed = invite_links.followed + 1
+            """, payload)
+
+async def get_links_and_followers():
+    p = get_pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch("""
+                    SELECT link,followed
+                    FROM invite_links
+                    ORDER BY followed DESC
+                """)
+
+        return rows
+
+

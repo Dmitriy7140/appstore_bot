@@ -6,12 +6,21 @@ from keyboards.service_buttons import service_keyboard
 
 from aiogram.types import FSInputFile
 
+from repository.database.database import add_client_source
+from services.naeb_service import parse_start_payload
+
 photo = FSInputFile("static/menus/as.png")
 
 rt = Router()
 
 @rt.message(CommandStart())
 async def start(message: Message):
+    payload = parse_start_payload(message)
+
+    await add_client_source(
+        telegram_id=message.from_user.id,
+        payload=payload
+    )
     await show_main_menu(message)
 
 
