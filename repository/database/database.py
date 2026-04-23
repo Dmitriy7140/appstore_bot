@@ -23,16 +23,12 @@ class UserMiddleware(BaseMiddleware):
         p = get_pool()
 
         async with p.acquire() as conn:
-            exists = await conn.fetchval(
-                "SELECT 1 FROM users WHERE telegram_id = $1",
-                user_id
-            )
-
-            if not exists:
-                await conn.execute("""
-                    INSERT INTO users (telegram_id, link)
-                    VALUES ($1, NULL)
-                """, user_id)
+            # создаём пользователя БЕЗ link (null ок)
+            await conn.execute("""
+                        INSERT INTO users (telegram_id)
+                        VALUES ($1)
+                        ON CONFLICT DO NOTHING
+                    """, user_id)
 
         return await handler(event, data)
 
@@ -83,23 +79,27 @@ async def add_client_source(telegram_id: int, payload: str | None):
 
     async with p.acquire() as conn:
 
-        # 1. фиксируем пользователя + first-touch source
-        await conn.execute("""
-            UPDATE users
-            SET
-                
-                link = COALESCE(link, $2)
-            WHERE telegram_id = $1
-        """, telegram_id, payload)
-
-        # 2. если есть рефка — обрабатываем invite_links
         if payload:
+            # 1. сначала гарантируем что ссылка существует
             await conn.execute("""
-                INSERT INTO invite_links (link,followed)
-                VALUES ($1,1)
-                ON CONFLICT (link)
-                DO UPDATE SET followed = invite_links.followed + 1
+                INSERT INTO invite_links (link, followed)
+                VALUES ($1, 0)
+                ON CONFLICT (link) DO NOTHING
             """, payload)
+
+            # 2. увеличиваем счётчик переходов
+            await conn.execute("""
+                UPDATE invite_links
+                SET followed = followed + 1
+                WHERE link = $1
+            """, payload)
+
+            # 3. привязываем пользователя к ссылке
+            await conn.execute("""
+                UPDATE users
+                SET link = $2
+                WHERE telegram_id = $1
+            """, telegram_id, payload)
 
 async def get_links_and_followers():
     p = get_pool()
