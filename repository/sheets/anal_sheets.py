@@ -6,7 +6,7 @@ import asyncio
 
 class AnalSheets:
     def __init__(self):
-        self.gc = gspread.service_account(filename="creds.json")
+        self.gc = gspread.service_account(filename="repository/sheets/creds.json")
         self.ws = self.gc.open("2pay_analysis").worksheet("links")
 
     async def sync_links(self):
