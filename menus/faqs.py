@@ -71,10 +71,14 @@ async def send_as_faq(callback: CallbackQuery):
     elif option == "adress":
         a=sheets.get_address()
         text=("<b>Отправляем вам данные Турецкого адреса, вводите без ошибок:\n\n"
+              "<i>Текст копируется при нажатии</i>\n"
             f"Street:  <code>{a["street"]}</code>\n"
               f"City:  <code>{a["city"]}</code>\n"
               f"Postcode:  <code>{a["postcode"]}</code>\n"
               f"Phone1:  <code>{a["phone1"]}</code>\n"
               f"Phone2:  <code>{a["phone2"]}</code></b>\n")
-        await callback.message.answer(text, parse_mode="html")
+        await callback.message.answer(text, parse_mode="html", reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="💰Пополнить", callback_data="as:topup")],
+                             [InlineKeyboardButton(text="📋Меню", callback_data="main_menu")]]
+        ))
         await callback.answer()

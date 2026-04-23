@@ -6,7 +6,9 @@ from config.utils import logger
 
 class Sheets:
     ALL_SHEETS = {
-        1:"500",
+        1:"100",
+        300: "100",
+        750: "250",
         1500: "500",
         3000: "1000",
         3750: "1250",
