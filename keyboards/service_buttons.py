@@ -10,8 +10,7 @@ def service_keyboard(service):
              ],
             [InlineKeyboardButton(text="📚Как сменить регион",
                                   callback_data="asfaq_region")],
-            [InlineKeyboardButton(text="🙍‍♂️Отзывы", url="https://t.me/review_2pay")]
-           # [InlineKeyboardButton(text="📋Меню",
-               #                   callback_data=f"main_menu")],
+            [InlineKeyboardButton(text="🙍‍♂️Отзывы", url="https://t.me/review_2pay")],
+           [InlineKeyboardButton(text="📌Часто задаваемые вопросы", url='https://telegra.ph/CHastye-voprosy-po-smene-regiona-i-popolneniyu-App-Store-04-24')]
         ]
     )
