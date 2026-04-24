@@ -9,12 +9,12 @@ from repository.sheets.sheets import sheets
 rt = Router()
 
 FAQ_CODE = [
-    "static/faqs/as1.png",
+    "static/faqs/as6.MOV",
     "static/faqs/as2.png",
     "static/faqs/as3.png",
 ]
 FAQ_REGION = [
-    "static/faqs/as6.MOV",
+    "static/faqs/as4.png",
     "static/faqs/as5.png",
 ]
 
