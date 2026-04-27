@@ -1,7 +1,7 @@
 import logging
 from aiogram.filters import BaseFilter
 from aiogram.types import Message, CallbackQuery
-from config_env import ADMIN_IDS
+from config.config_env import ADMIN_IDS
 logging.basicConfig(
     level=logging.INFO,
     format='%(filename)s %(funcName)s %(asctime)s [%(levelname)s] %(message)s',
