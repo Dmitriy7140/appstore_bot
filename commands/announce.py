@@ -82,7 +82,7 @@ async def announce_confirm(callback: CallbackQuery, state: FSMContext, mailer: M
 
     success, failed = await mailer.send_to_many(users if not TEST_MODE else ADMIN_IDS, msg)
 
-    total = len(users)
+    total = users.qsize()
 
     await callback.message.edit_text(
         f"✅ Рассылка завершена\n\n"
