@@ -12,6 +12,7 @@ if TEST_MODE:
     DB_PASSWORD = getenv("DB_PASSWORD")
     DB_NAME = getenv("DB_NAME")
     DB_HOST = getenv("DB_HOST")
+    ADMIN_IDS = list(map(int, getenv("ADMIN_IDS", "").split(",")))
 else:
     BOT_TOKEN = getenv('BOT_TOKEN')
     SHOP_ID = getenv('SHOP_ID')
@@ -22,3 +23,4 @@ else:
     DB_PASSWORD = getenv("DB_PASSWORD")
     DB_NAME = getenv("DB_NAME")
     DB_HOST = getenv("DB_HOST")
+    ADMIN_IDS = list(map(int, getenv("ADMIN_IDS", "").split(",")))

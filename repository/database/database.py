@@ -5,6 +5,8 @@ from aiogram import BaseMiddleware
 from typing import Callable, Dict, Any, Awaitable
 from config.config_env import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST
 
+from asyncio import Queue
+
 pool: asyncpg.Pool | None = None
 
 
@@ -111,5 +113,17 @@ async def get_links_and_followers():
                 """)
 
         return rows
+async def get_user_ids():
+    p = get_pool()
+    async with p.acquire() as conn:
+        rows = await conn.fetch("""
+                    SELECT telegram_id
+                    FROM users
+                    """)
+        queue = Queue()
+        for (tg_id,) in rows:
+            await queue.put(tg_id)
+
+        return queue
 
 

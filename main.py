@@ -6,16 +6,18 @@ from config.utils import logger
 from menus import service_menu, start, amounts_menu, payment_menu, faqs
 from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
+from services.notification_service import Mailer
+from commands import announce
 
 bot = Bot(token=BOT_TOKEN)
 
 
 async def main():
-    # 1. сначала инфраструктура
+
     await database.init_db()
     anal_sheets = AnalSheets()
     asyncio.create_task(anal_loop(anal_sheets))
-    # 2. потом всё остальное
+
     dp = Dispatcher()
 
     dp.message.middleware(database.UserMiddleware())
@@ -26,6 +28,11 @@ async def main():
     dp.include_router(amounts_menu.rt)
     dp.include_router(payment_menu.rt)
     dp.include_router(faqs.rt)
+    dp.include_router(announce.router)
+    mailer = Mailer(bot, logger)
+    await mailer.start()
+
+    dp["mailer"] = mailer
 
     logger.info("БД подключена, запускаем бота...")
 
