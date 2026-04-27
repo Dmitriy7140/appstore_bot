@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from yookassa import Configuration, Payment
 from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
 from config.utils import logger
+from repository.sheets.sheets import sheets
 
 from services.sender_service import send_transaction_notice
 from main import bot
@@ -19,6 +20,16 @@ RATES = {1:1,
     1500: 4500.00,
     1750: 5250.00,
     2000: 6000.00,
+}
+REV_RATES = {
+    300: 100,
+    750: 250,
+    1500: 500,
+    3000: 1000,
+    3750: 1250,
+    4500: 1500,
+    5250: 1750,
+    6000: 2000,
 }
 SERVICE_NAMES = {
     "as" : "AppStore",
@@ -77,8 +88,11 @@ async def wait_payment(callback, get_key, payment_id):
                                            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Как активировать код?", callback_data="asfaq_code")],
                                                                                                                                        [InlineKeyboardButton(
                                                                                                                                            text="Как поменять регион?",
-                                                                                                                                           callback_data="asfaq_region")]]))
+
+                                                                                                                                       callback_data="asfaq_region")]]))
             user_id = int(payment.metadata["user_id"])
+            sheets.add_used(REV_RATES[int(payment.amount.value)], user_id, key)
+
             logger.info(f"Отправляем транзакцию для айди {user_id}")
             await send_transaction_notice(
                 bot,
@@ -89,7 +103,7 @@ async def wait_payment(callback, get_key, payment_id):
             )
             logger.info(f"Оплата подтверждена! user_id:{user_id}, amount:{payment.amount.value}")
             break
-        if payment.status == "canceled":
+        elif payment.status == "canceled":
             await callback.message.answer( "❌Платеж отменен. Попробуйте еще раз или свяжитесь с менеджером @MANAGER_2PAY")
             logger.error(f"Оплата была отменена! user_id:{callback.from_user.id}")
             break

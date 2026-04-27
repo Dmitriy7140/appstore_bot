@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import gspread
 import random
 
@@ -15,7 +17,8 @@ class Sheets:
         4500: "1500",
         5250: "1750",
         6000: "2000",
-        "adress":"adress"
+        "adress":"adress",
+        "used":"used"
 
     }
 
@@ -101,4 +104,34 @@ class Sheets:
         logger.error(f"Ключи на странице {sheet} закончились!")
         return False
 
+    def add_used(self, amount: int, telegram_id: int, code: str):
+        """
+        Добавляет запись в лист 'used':
+        [номинал, telegram_id, код, дата]
+        """
+
+        sheet = self._get_sheet("used")
+
+        if not sheet:
+            logger.error("Лист 'used' не найден")
+            return False
+
+        try:
+            now = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+            row = [
+                amount,
+                telegram_id,
+                code,
+                now
+            ]
+
+            sheet.append_row(row, value_input_option="USER_ENTERED")
+
+            logger.info(f"Добавили использованный код {code} для {telegram_id}")
+            return True
+
+        except Exception as e:
+            logger.exception(f"Ошибка записи в used: {e}")
+            return False
 sheets = Sheets()
