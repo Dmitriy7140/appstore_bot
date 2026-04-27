@@ -1,6 +1,6 @@
 from os import getenv
 from dotenv import load_dotenv
-TEST_MODE=True
+TEST_MODE=False
 load_dotenv()
 if TEST_MODE:
     BOT_TOKEN = getenv("TEST_BOT_TOKEN")
