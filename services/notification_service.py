@@ -4,6 +4,8 @@ import asyncio
 from asyncio import Queue
 from aiogram import Bot
 
+from config.config_env import TEST_MODE
+
 
 class Mailer:
     def __init__(self, bot: Bot, logger, workers: int = 3):
@@ -48,9 +50,12 @@ class Mailer:
     async def send_to_many(self, users, msg: Message):
         self.success = 0
         self.failed = 0
-
-        for (user_id,) in users:
-            await self.queue.put((user_id, msg))
+        if TEST_MODE:
+            for user in users:
+                await self.queue.put((user.id, msg))
+        else:
+            for (user_id,) in users:
+                await self.queue.put((user_id, msg))
 
         await self.queue.join()
 
