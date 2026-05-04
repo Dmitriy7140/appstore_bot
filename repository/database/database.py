@@ -159,21 +159,11 @@ async def get_user_ids_by_state(state: str | None):
             rows = await conn.fetch("""
                 SELECT telegram_id FROM users
             """)
-        if state == "others":
-            rows = await conn.fetch("""
-            SELECT telegram_id
-            FROM users
-            WHERE state NOT IN ('paid', 'rfool')
-            """)
         else:
             rows = await conn.fetch("""
                 SELECT telegram_id FROM users
                 WHERE state = $1
             """, state)
 
-    queue = Queue()
-    for (tg_id,) in rows:
-        await queue.put(tg_id)
-
-    return queue
+    return [row["telegram_id"] for row in rows]
 
