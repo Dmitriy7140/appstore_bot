@@ -9,6 +9,7 @@ from repository.database.database import add_transaction
 
 
 
+
 async def lazy_send_photo(callback, service: str, keyboard:InlineKeyboardMarkup):
 
     if callback.data.endswith("topup"):

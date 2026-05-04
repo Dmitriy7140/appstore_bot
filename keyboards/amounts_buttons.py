@@ -22,14 +22,6 @@ def amounts_keyboard(service: str) -> InlineKeyboardMarkup:
         keyboard.append(row)
 
 
-    keyboard.append([
-        InlineKeyboardButton(
-            text="💰Другая сумма",
-            callback_data=f"{service}/any"
-        )
-    ],
-
-    )
     keyboard.append([InlineKeyboardButton(text="📋Меню", callback_data="main_menu")],)
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

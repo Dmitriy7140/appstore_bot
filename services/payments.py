@@ -108,3 +108,4 @@ async def wait_payment(callback, get_key, payment_id):
             logger.error(f"Оплата была отменена! user_id:{callback.from_user.id}")
             break
         await asyncio.sleep(5)
+
