@@ -37,6 +37,7 @@ def audience_keyboard():
     builder.button(text="👥 Все", callback_data="announce_all")
     builder.button(text="💸 Оплатили", callback_data="announce_paid")
     builder.button(text="🌍 Застряли в регионе", callback_data="announce_rfool")
+    builder.button(text="🤪Не платили и не застряли", callback_data="announce_others")
 
     builder.adjust(1)
     return builder.as_markup()
@@ -65,6 +66,7 @@ async def announce_get_audience(callback: CallbackQuery, state: FSMContext):
         "announce_all": "all",
         "announce_paid": "paid",
         "announce_rfool": "rfool",
+        "announce_others": "others"
     }
     selected = mapping.get(callback.data)
 
