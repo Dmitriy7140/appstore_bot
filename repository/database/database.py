@@ -155,10 +155,22 @@ async def get_user_ids_by_state(state: str | None):
     p = get_pool()
 
     async with p.acquire() as conn:
+
+        # 👇 ВСЕ пользователи
         if state == "all" or state is None:
             rows = await conn.fetch("""
                 SELECT telegram_id FROM users
             """)
+
+        # 👇 "others" = всё кроме paid и rfool
+        elif state == "others":
+            rows = await conn.fetch("""
+                SELECT telegram_id FROM users
+                WHERE state IS NULL
+                   OR state NOT IN ('paid', 'rfool')
+            """)
+
+        # 👇 конкретные состояния
         else:
             rows = await conn.fetch("""
                 SELECT telegram_id FROM users
