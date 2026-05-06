@@ -3,7 +3,7 @@ from aiogram.types import FSInputFile, InlineKeyboardMarkup
 
 from config.config_messages import SERVICES, AMOUNTS
 from config.config_env import ADMIN_CHAT_ID, TEST_MODE
-from config.utils import logger
+
 from repository.database.database import add_transaction
 from main import bot
 
@@ -52,7 +52,7 @@ async def lazy_send_photo(callback, service: str, keyboard:InlineKeyboardMarkup)
         SERVICES[service]["file_id"] = file_id
 
 async def send_transaction_notice(telegram_id:int, tx_id:str, amount:int, code:str):
-    await add_transaction(telegram_id, tx_id, amount)
+    await add_transaction(bot, telegram_id, tx_id, amount)
 
     # 2. отправляем уведомление админу
     user_link = f"tg://user?id={telegram_id}"
@@ -67,12 +67,3 @@ async def send_transaction_notice(telegram_id:int, tx_id:str, amount:int, code:s
 
     await bot.send_message(ADMIN_CHAT_ID, text, parse_mode="html")
 
-async def send_referral_reward( inviter_id: int, key: str):
-    try:
-        await bot.send_message(
-            inviter_id,
-            f"🎉 Ваш реферал совершил оплату!\n\nВаш ключ на 100 лир: <code>{key}</code>",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logger.exception(f"Ошибка отправки реф награды: {e}")

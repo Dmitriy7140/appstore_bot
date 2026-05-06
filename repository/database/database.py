@@ -9,7 +9,6 @@ from repository.sheets.sheets import sheets
 
 from asyncio import Queue
 
-from services.sender_service import send_referral_reward
 
 pool: asyncpg.Pool | None = None
 
@@ -81,7 +80,7 @@ def get_pool() -> asyncpg.Pool:
 # -------------------------
 # ТРАНЗАКЦИИ / БИЗНЕС-ЛОГИКА
 # -------------------------
-async def add_transaction(telegram_id: int, tx_id: str, amount: int):
+async def add_transaction(bot, telegram_id: int, tx_id: str, amount: int):
     p = get_pool()
 
     async with p.acquire() as conn:
@@ -103,7 +102,7 @@ async def add_transaction(telegram_id: int, tx_id: str, amount: int):
     result = await process_referral_reward(telegram_id)
 
     if result:
-        await send_referral_reward(
+        await send_referral_reward(bot,
             result["inviter_id"],
             result["key"]
         )
@@ -225,7 +224,15 @@ async def process_referral_reward(telegram_id: int):
             "inviter_id": inviter_id,
             "key": key
             }
-
+async def send_referral_reward(bot, inviter_id: int, key: str):
+    try:
+        await bot.send_message(
+            inviter_id,
+            f"🎉 Ваш реферал совершил оплату!\n\nВаш ключ на 100 лир: <code>{key}</code>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.exception(f"Ошибка отправки реф награды: {e}")
 
 
 async def get_links_and_followers():
