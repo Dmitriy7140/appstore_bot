@@ -216,9 +216,7 @@ async def process_referral_reward(telegram_id: int):
                 WHERE user_id = $1
             """, telegram_id)
 
-        key = sheets.get_key(100)
-        if not key:
-            return None
+
 
         return {
             "inviter_id": inviter_id,
