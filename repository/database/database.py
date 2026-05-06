@@ -203,7 +203,7 @@ async def process_referral_reward(telegram_id: int):
             """, telegram_id)
 
             # 2. берём ключ
-            key = sheets.get_key(100)  # или логика от service/amount
+            key = sheets.get_key(300)  # или логика от service/amount
 
             if not key:
                 logger.error("Нет ключей для выдачи!")
