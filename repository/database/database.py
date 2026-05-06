@@ -5,7 +5,11 @@ from aiogram import BaseMiddleware
 from typing import Callable, Dict, Any, Awaitable
 from config.config_env import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST
 
+from repository.sheets.sheets import sheets
+
 from asyncio import Queue
+
+from services.sender_service import send_referral_reward
 
 pool: asyncpg.Pool | None = None
 
@@ -42,11 +46,16 @@ class UserMiddleware(BaseMiddleware):
                         WHERE telegram_id = $1
                         """, user_id)
             if hasattr(event, "data") and event.data == "asfaq_region":
-                if user["total_spent"] > 0:
+                if user["total_spent"] == 0:
                     await conn.execute("""
                             UPDATE users SET state = 'rfool'
                             WHERE telegram_id = $1
                             """, user_id)
+            if user["total_spent"] > 0:
+                await conn.execute("""
+                UPDATE users SET state = 'paid'
+                WHERE telegram_id = $1
+                """, user_id)
 
         return await handler(event, data)
 
@@ -55,7 +64,7 @@ class UserMiddleware(BaseMiddleware):
 # -------------------------
 async def init_db():
     global pool
-    pool = await asyncpg.create_pool(
+    pool = await asyncpg.create_pool(                   #type:ignore
         user=DB_USER,
         password=DB_PASSWORD,
         database=DB_NAME,
@@ -90,7 +99,14 @@ async def add_transaction(telegram_id: int, tx_id: str, amount: int):
                 SET total_spent = total_spent + $1
                 WHERE telegram_id = $2
             """, amount, telegram_id)
-            logger.info("Обновили транзакции в базе!")
+    logger.info("Обновили транзакции в базе!")
+    result = await process_referral_reward(telegram_id)
+
+    if result:
+        await send_referral_reward(
+            result["inviter_id"],
+            result["key"]
+        )
 
 async def add_client_source(telegram_id: int, payload: str | None):
     p = get_pool()
@@ -118,6 +134,99 @@ async def add_client_source(telegram_id: int, payload: str | None):
                 SET link = $2
                 WHERE telegram_id = $1
             """, telegram_id, payload)
+
+async def add_referral(telegram_id: int, payload: str):
+    # payload format: ref_<inviter_id>_<service>
+    try:
+        _, ref_id_str, service = payload.split("_")
+        ref_id = int(ref_id_str)
+    except Exception:
+        return  # битый payload — игнорируем
+
+    # запрет самореферала
+    if telegram_id == ref_id:
+        return
+
+    p = get_pool()
+
+    async with p.acquire() as conn:
+        async with conn.transaction():
+
+            # проверяем, есть ли уже запись (user_id + service)
+            exists = await conn.fetchval("""
+                SELECT 1
+                FROM referrals
+                WHERE user_id = $1 AND service = $2
+            """, telegram_id, service)
+
+            if exists:
+                return  # уже привязан — ничего не делаем
+
+            # проверяем, существует ли пригласивший
+            inviter_exists = await conn.fetchval("""
+                SELECT 1 FROM users WHERE telegram_id = $1
+            """, ref_id)
+
+            if not inviter_exists:
+                return
+
+            # создаём реферал
+            await conn.execute("""
+                INSERT INTO referrals (user_id, invited_by, service)
+                VALUES ($1, $2, $3)
+            """, telegram_id, ref_id, service)
+async def process_referral_reward(telegram_id: int):
+    p = get_pool()
+
+    async with p.acquire() as conn:
+        async with conn.transaction():
+
+            # берём НЕобработанный реферал и блокируем строку
+            row = await conn.fetchrow("""
+                SELECT invited_by, service
+                FROM referrals
+                WHERE user_id = $1
+                  AND activated = FALSE
+                FOR UPDATE
+            """, telegram_id)
+
+            if not row:
+                return None
+
+            inviter_id = row["invited_by"]
+
+
+            # 1. активируем
+            await conn.execute("""
+                UPDATE referrals
+                SET activated = TRUE
+                WHERE user_id = $1
+            """, telegram_id)
+
+            # 2. берём ключ
+            key = sheets.get_key(100)  # или логика от service/amount
+
+            if not key:
+                logger.error("Нет ключей для выдачи!")
+                return None
+
+            # 3. фиксируем выдачу (ВАЖНО: до отправки сообщения)
+            await conn.execute("""
+                UPDATE referrals
+                SET reward_given = TRUE
+                WHERE user_id = $1
+            """, telegram_id)
+
+        key = sheets.get_key(100)
+        if not key:
+            return None
+
+        return {
+            "inviter_id": inviter_id,
+            "key": key
+            }
+
+
 
 async def get_links_and_followers():
     p = get_pool()

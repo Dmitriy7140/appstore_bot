@@ -12,6 +12,6 @@ def service_keyboard(service):
                                   callback_data="asfaq_region")],
             [InlineKeyboardButton(text="🙍‍♂️Отзывы", url="https://t.me/review_2pay")],
            [InlineKeyboardButton(text="📌Часто задаваемые вопросы", url='https://telegra.ph/CHastye-voprosy-po-smene-regiona-i-popolneniyu-App-Store-04-24')],
-            #[InlineKeyboardButton(text="🎁Реферальная программа", callback_data=f"{service}ref")]
+            [InlineKeyboardButton(text="🎁Реферальная программа", callback_data=f"{service}ref")]
         ]
     )

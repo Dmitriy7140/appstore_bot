@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher
 from config.config_env import BOT_TOKEN
 from config.utils import logger
 
-from menus import service_menu, start, amounts_menu, payment_menu, faqs
+from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal_menu
 from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
@@ -29,6 +29,7 @@ async def main():
     dp.include_router(payment_menu.rt)
     dp.include_router(faqs.rt)
     dp.include_router(announce.router)
+    dp.include_router(referal_menu.rt)
     mailer = Mailer(bot, logger)
     await mailer.start()
 
