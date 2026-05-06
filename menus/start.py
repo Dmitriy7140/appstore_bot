@@ -13,7 +13,7 @@ photo = FSInputFile("static/menus/as.png")
 
 rt = Router()
 
-@rt.message(CommandStart(deep_link=True))
+@rt.message(CommandStart())
 async def start(message: Message, command:CommandObject):
     payload = command.args
     if payload:

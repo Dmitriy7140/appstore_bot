@@ -7,7 +7,7 @@ from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal
 from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
-from commands import announce
+from commands import announce, allusers
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -30,6 +30,7 @@ async def main():
     dp.include_router(faqs.rt)
     dp.include_router(announce.router)
     dp.include_router(referal_menu.rt)
+    dp.include_router(allusers.rt)
     mailer = Mailer(bot, logger)
     await mailer.start()
 
