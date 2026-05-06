@@ -2,6 +2,8 @@ from aiogram import Router
 from aiogram.types import CallbackQuery, CopyTextButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from config.config_env import TEST_MODE
+
 rt = Router()
 
 @rt.callback_query(lambda c: c.data == "asref")
@@ -18,6 +20,8 @@ async def as_ref_menu(callback: CallbackQuery):
     await callback.answer()
 def ref_keyboard(user_id):
     url = f"https://t.me/Official_2paybot?start=ref_{user_id}_as"
+    if TEST_MODE:
+        url = f"https://t.me/appstore_cash_bot?start=ref_{user_id}_as"
     builder = InlineKeyboardBuilder()
     builder.button(text="🔗 Скопировать ссылку", copy_text=CopyTextButton(text=url))
     return builder.as_markup()
