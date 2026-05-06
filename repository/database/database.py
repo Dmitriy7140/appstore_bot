@@ -3,7 +3,7 @@ import asyncpg
 from config.utils import logger
 from aiogram import BaseMiddleware
 from typing import Callable, Dict, Any, Awaitable
-from config.config_env import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST
+from config.config_env import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, ADMIN_CHAT_ID
 
 from repository.sheets.sheets import sheets
 
@@ -224,9 +224,17 @@ async def process_referral_reward(telegram_id: int):
             }
 async def send_referral_reward(bot, inviter_id: int, key: str):
     try:
+        user_link = f"tg://user?id={inviter_id}"
         await bot.send_message(
             inviter_id,
             f"🎉 Ваш реферал совершил оплату!\n\nВаш ключ на 100 лир: <code>{key}</code>",
+            parse_mode="HTML"
+        )
+        await bot.send_message(
+            ADMIN_CHAT_ID,
+            f"🎁 Бонус за реферала!\n\n"
+            f"👤 Получатель: <a href='{user_link}'>{inviter_id}</a>\n\n",
+            f"🔑 Код: <tg-spoiler>{key}</tg-spoiler>",
             parse_mode="HTML"
         )
     except Exception as e:
