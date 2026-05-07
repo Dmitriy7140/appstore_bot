@@ -7,6 +7,7 @@ from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal
 from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
+from services.scheduler import start_scheduler
 from commands import announce, allusers
 
 bot = Bot(token=BOT_TOKEN)
@@ -35,6 +36,7 @@ async def main():
     await mailer.start()
 
     dp["mailer"] = mailer
+    start_scheduler()
 
     logger.info("БД подключена, запускаем бота...")
 

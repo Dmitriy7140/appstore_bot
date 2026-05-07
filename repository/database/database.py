@@ -107,6 +107,27 @@ async def add_transaction(bot, telegram_id: int, tx_id: str, amount: int):
             result["key"]
         )
 
+async def get_daily_transactions_stats():
+    p = get_pool()
+
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT
+                COUNT(*) AS total_transactions,
+                COALESCE(SUM(amount), 0) AS total_amount
+            FROM appstore_transactions
+            WHERE telegram_id NOT IN (57713855, 5777995768)
+              AND created_at >= CURRENT_DATE - INTERVAL '1 day'
+              AND created_at < CURRENT_DATE
+        """)
+
+        return {
+            "transactions": row["total_transactions"],
+            "amount": row["total_amount"]
+        }
+
+
+
 async def add_client_source(telegram_id: int, payload: str | None):
     p = get_pool()
 
@@ -232,9 +253,10 @@ async def send_referral_reward(bot, inviter_id: int, key: str):
         )
         await bot.send_message(
             ADMIN_CHAT_ID,
+            text=(
             f"🎁 Бонус за реферала!\n\n"
             f"👤 Получатель: <a href='{user_link}'>{inviter_id}</a>\n\n",
-            f"🔑 Код: <tg-spoiler>{key}</tg-spoiler>",
+            f"🔑 Код: <tg-spoiler>{key}</tg-spoiler>"),
             parse_mode="HTML"
         )
     except Exception as e:
