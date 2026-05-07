@@ -1,11 +1,11 @@
 from os import getenv
 from dotenv import load_dotenv
-TEST_MODE = getenv("TEST_MODE")
-if TEST_MODE == "True":
-    TEST_MODE = True
-else:
-    TEST_MODE = False
 load_dotenv()
+if getenv("TEST_MODE") == "False":
+    TEST_MODE = False
+else:
+    TEST_MODE = True
+
 if TEST_MODE:
     BOT_TOKEN = getenv("TEST_BOT_TOKEN")
     SHOP_ID=getenv("TEST_SHOP_ID")
