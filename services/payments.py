@@ -12,24 +12,24 @@ from services.sender_service import send_transaction_notice
 from main import bot
 
 RATES = {1: 1,
-         100: 300.00,
-         250: 750.00,
-         500: 1500.00,
-         1000: 3000.00,
-         1250: 3750.00,
-         1500: 4500.00,
-         1750: 5250.00,
-         2000: 6000.00,
+         100: 400.00,
+         250: 1000.00,
+         500: 1800.00,
+         1000: 3500.00,
+         1250: 4250.00,
+         1500: 5100.00,
+         1750: 5600.00,
+         2000: 6400.00,
          }
 REV_RATES = {
-    300: 100,
-    750: 250,
-    1500: 500,
-    3000: 1000,
-    3750: 1250,
-    4500: 1500,
-    5250: 1750,
-    6000: 2000,
+    400: 100,
+    1000: 250,
+    1800: 500,
+    3500: 1000,
+    4250: 1250,
+    5100: 1500,
+    5600: 1750,
+    6400: 2000,
 }
 SERVICE_NAMES = {
     "as": "AppStore",
@@ -67,7 +67,7 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
 
 
 async def wait_payment(callback, get_key, payment_id, sent_message):
-    timeout = 15 * 60
+    timeout = 11 * 60
     resend_after = 30 * 60
     start_time = asyncio.get_event_loop().time()
     while True:
