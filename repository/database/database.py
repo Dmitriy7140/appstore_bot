@@ -111,14 +111,13 @@ async def get_daily_transactions_stats():
     p = get_pool()
 
     async with p.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT
-                COUNT(*) AS total_transactions,
-                COALESCE(SUM(amount), 0) AS total_amount
-            FROM appstore_transactions
-            WHERE telegram_id NOT IN (57713855, 5777995768)
-              AND created_at >= CURRENT_DATE - INTERVAL '1 day'
-              AND created_at < CURRENT_DATE
+        row = await conn.fetchrow("""SELECT
+    COUNT(*) AS total_transactions,
+    COALESCE(SUM(amount), 0) AS total_amount
+FROM appstore_transactions
+WHERE telegram_id NOT IN (57713855, 5777995768)
+  AND created_at >= (CURRENT_DATE - INTERVAL '1 day') + INTERVAL '3 hours'
+  AND created_at < CURRENT_DATE + INTERVAL '3 hours'
         """)
 
         return {
