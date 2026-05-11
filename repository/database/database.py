@@ -116,8 +116,8 @@ async def get_daily_transactions_stats():
     COALESCE(SUM(amount), 0) AS total_amount
 FROM appstore_transactions
 WHERE telegram_id NOT IN (57713855, 5777995768)
-  AND created_at >= (CURRENT_DATE - INTERVAL '1 day') + INTERVAL '3 hours'
-  AND created_at < CURRENT_DATE + INTERVAL '3 hours'
+  AND created_at >= (CURRENT_DATE - INTERVAL '1 day') - INTERVAL '3 hours'
+  AND created_at < CURRENT_DATE - INTERVAL '3 hours'
         """)
 
         return {

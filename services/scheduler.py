@@ -21,8 +21,8 @@ def start_scheduler():
     scheduler.add_job(
         job,
         trigger="cron",
-        hour=0,
-        minute=5
+        hour=18,
+        minute=50
     )
 
     scheduler.start()
