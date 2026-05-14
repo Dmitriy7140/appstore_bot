@@ -86,3 +86,11 @@ async def send_as_faq(callback: CallbackQuery):
                              [InlineKeyboardButton(text="📋Меню", callback_data="main_menu")]]
         ))
         await callback.answer()
+    elif option == "payment":
+        text=('❌ Сейчас участились ситуации, когда <b>ПЛАТЕЖИ НЕ ПРОХОДЯТ</b> из-за нововведений и текущих ограничений для Телеграма и других платформ.\n\n' 
+
+            '✅ Чтобы успешно завершить платёж, <b>СКОПИРУЙТЕ ССЫЛКУ</b> для оплаты и откройте её в вашем стандартном браузере.\n\n'
+            
+            '🌐 Если у вас включён <b>VPN, ОТКЛЮЧИТЕ</b> его на время оплаты. После этого платёж пройдёт успешно, и вы <b>получите код для App Store без задержек.</b>\n\n')
+        await callback.message.answer(text, parse_mode="html")
+        await callback.answer()
