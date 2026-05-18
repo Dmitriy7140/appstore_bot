@@ -1,8 +1,8 @@
 import asyncio
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram import Router
-from services.payments import create_payment, wait_payment, RATES
-from repository.sheets.sheets import sheets
+from services.payments import create_payment, wait_payment, RATES, sheets
+
 
 rt = Router()
 @rt.callback_query(lambda c: c.data.startswith("pay/"))
