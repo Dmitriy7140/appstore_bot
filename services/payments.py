@@ -1,6 +1,7 @@
 import asyncio
 
 import uuid
+from datetime import datetime, timezone, timedelta
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from yookassa import Configuration, Payment
@@ -45,6 +46,11 @@ Configuration.secret_key = SECRET_KEY
 
 async def create_payment(amount: int, chat_id, user_id) -> tuple:
     id_key = str(uuid.uuid4())
+
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=15)
+    ).isoformat()
+
     payment = Payment.create({
         "amount": {
             "value": str(RATES[amount]),
@@ -60,9 +66,12 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
             "user_id": user_id,
         },
         "description": f"Оплата заказа user_id ({user_id})",
+        "expires_at": expires_at
 
     }, id_key)
+
     logger.info(f"создали транзакцию для айди {user_id}")
+
     return payment.confirmation.confirmation_url, payment.id
 
 
