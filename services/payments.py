@@ -42,7 +42,7 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
     id_key = str(uuid.uuid4())
     payment = Payment.create({
         "amount": {
-            "value": '1.00',#str(RATES[amount]),
+            "value": str(RATES[amount]),
             "currency": "RUB"
         },
         "confirmation": {
