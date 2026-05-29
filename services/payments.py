@@ -42,7 +42,7 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
     id_key = str(uuid.uuid4())
     payment = Payment.create({
         "amount": {
-            "value": str(RATES[amount]),
+            "value": '1.00',#str(RATES[amount]),
             "currency": "RUB"
         },
         "confirmation": {
@@ -54,6 +54,22 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
             "chat_id": chat_id,
             "user_id": user_id,
         },
+        "receipt" : {
+            "customer": {
+                "email": "support2pay@gmail.com"
+            },
+            "items": [{
+                "description": "Цифровой информационный материал",
+                "quantity": "1.00",
+                "amount": {
+                    "value": f"{str(RATES[amount])}",
+                    "currency": "RUB"
+                },
+                "vat_code": 1,
+                "payment_subject": "service",
+                "payment_mode": "full_payment"
+            }]},
+
         "description": f"Оплата заказа user_id ({user_id})",
 
     }, id_key)
