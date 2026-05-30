@@ -1,7 +1,7 @@
 
 import uuid
 
-from yookassa import Configuration, Payment, Receipt
+from yookassa import Configuration, Payment
 from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
 from config.utils import logger
 
