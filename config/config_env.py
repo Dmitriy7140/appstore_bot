@@ -8,9 +8,9 @@ else:
 
 if TEST_MODE:
     BOT_TOKEN = getenv("TEST_BOT_TOKEN")
-    SHOP_ID=getenv("SHOP_ID")
-    SECRET_KEY=getenv("SECRET_KEY")
-    BOT_URL=getenv("BOT_URL")
+    SHOP_ID=getenv("TEST_SHOP_ID")
+    SECRET_KEY=getenv("TEST_SECRET_KEY")
+    BOT_URL=getenv("TEST_BOT_URL")
     ADMIN_CHAT_ID=getenv("ADMIN_CHAT_ID")
     DB_USER = getenv("DB_USER")
     DB_PASSWORD = getenv("DB_PASSWORD")
