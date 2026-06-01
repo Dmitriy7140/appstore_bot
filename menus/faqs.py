@@ -109,9 +109,7 @@ async def send_as_faq(callback: CallbackQuery):
         media = [
             InputMediaPhoto(
                 media=FSInputFile(FAQ_IMSTUPID[0]),
-                caption='<b>Остались вопросы?</b>\n\n'
-                        'Пишите в рабочее время: @manager_2pay\n\n'
-                        'Пишите в любое время: @helper_2pay_bot',
+                caption=caption,
                 parse_mode="HTML",
 
             ),
