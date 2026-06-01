@@ -11,7 +11,7 @@ def service_keyboard(service):
             [InlineKeyboardButton(text="📚Как сменить регион",
                                   callback_data="asfaq_region")],
             [InlineKeyboardButton(text="🙍‍♂️Отзывы", url="https://t.me/review_2pay")],
-           [InlineKeyboardButton(text="📌Часто задаваемые вопросы", callback_data="asfaq_imstupid"'')],
+           [InlineKeyboardButton(text="📌Ответы на ваши вопросы", callback_data="asfaq_imstupid"'')],
             [InlineKeyboardButton(text="🎁Реферальная программа", callback_data=f"{service}ref")]
         ]
     )

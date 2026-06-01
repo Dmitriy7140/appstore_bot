@@ -102,6 +102,10 @@ async def send_as_faq(callback: CallbackQuery):
         await callback.message.answer(text, parse_mode="html")
         await callback.answer()
     elif option == "imstupid":
+        caption= ('Это самое волнительное — менять что-то в своём iPhone. Но бояться нечего: ваш аккаунт остаётся вашим, ничего не потеряется, а мы рядом на каждом шаге ❤️\n\n'
+
+                '👩 Остались вопросы — менеджер Анна → @manager_2pay\n'
+                '🤖 Сменить регион и пополнить App Store → @official_2paybot\n')
         media = [
             InputMediaPhoto(
                 media=FSInputFile(FAQ_IMSTUPID[0]),
