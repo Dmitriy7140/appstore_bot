@@ -17,6 +17,13 @@ FAQ_REGION = [
     "static/faqs/as4.png",
     "static/faqs/as5.png",
 ]
+FAQ_IMSTUPID = [
+    "static/faqs/imstupid1.jpg",
+    "static/faqs/imstupid2.jpg",
+    "static/faqs/imstupid3.jpg",
+    "static/faqs/imstupid4.jpg",
+    "static/faqs/imstupid5.jpg",
+]
 
 
 @rt.callback_query(F.data.startswith("asfaq"))
@@ -94,3 +101,20 @@ async def send_as_faq(callback: CallbackQuery):
               'Ваш 2PAY🩶</code>')
         await callback.message.answer(text, parse_mode="html")
         await callback.answer()
+    elif option == "imstupid":
+        media = [
+            InputMediaPhoto(
+                media=FSInputFile(FAQ_IMSTUPID[0]),
+                caption='<b>Остались вопросы?</b>\n\n'
+                        'Пишите в рабочее время: @manager_2pay\n\n'
+                        'Пишите в любое время: @helper_2pay_bot',
+                parse_mode="HTML",
+
+            ),
+            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[1])),
+            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[2])),
+            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[3])),
+            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[4])),
+
+        ]
+        await callback.message.answer_media_group(media)
