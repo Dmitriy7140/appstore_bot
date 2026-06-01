@@ -118,3 +118,4 @@ async def send_as_faq(callback: CallbackQuery):
 
         ]
         await callback.message.answer_media_group(media)
+        await callback.answer()
