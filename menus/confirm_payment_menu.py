@@ -113,13 +113,6 @@ async def payment_worker():
                     amount = int(Decimal(payment.amount.value))  # 🔥 безопасно
 
                     user_id = data["user_id"]
-
-                    # защита от неправильной суммы
-                    if amount not in REV_RATES:
-                        logger.error(f"Unknown payment amount: {amount}")
-                        ACTIVE_PAYMENTS.pop(payment_id, None)
-                        continue
-
                     key = sheets.get_key(amount)
 
                     sheets.add_used(
