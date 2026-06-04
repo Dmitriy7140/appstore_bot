@@ -165,15 +165,27 @@ async def payment_worker():
 
         for payment_id in list(ACTIVE_PAYMENTS.keys()):
             data = ACTIVE_PAYMENTS[payment_id]
-            if now - data["created_at"] > 590:
+            if now - data["created_at"] > 560:
 
                 try:
+                    payment = await asyncio.to_thread(
+                        Payment.find_one,
+                        payment_id
+                    )
+
+                    logger.info(
+                        f"Платеж {payment_id}: status={payment.status}"
+                    )
+
                     await asyncio.to_thread(
                         Payment.cancel,
                         payment_id
                     )
-                except Exception as e:
-                    logger.warning(f"Не удалось отменить платеж {payment_id}: {e}")
+
+                except Exception:
+                    logger.exception(
+                        f"Ошибка отмены платежа {payment_id}"
+                    )
 
                 try:
                     await data["callback"].message.answer(
