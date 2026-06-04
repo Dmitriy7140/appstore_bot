@@ -145,7 +145,7 @@ async def fetch_payment_safe(payment_id: str):
             )
 
         except asyncio.TimeoutError:
-            logger.warning(f"Юкасса таймаут (попытка {attempt}) для {payment_id}")
+            logger.warning(f"Ждем статус транзакции для {payment_id}")
 
         except (socket.gaierror, OSError) as e:
             logger.warning(f"Сетевая ошибка Юкассы (попытка {attempt}): {e}")
@@ -166,15 +166,23 @@ async def payment_worker():
         for payment_id in list(ACTIVE_PAYMENTS.keys()):
             data = ACTIVE_PAYMENTS[payment_id]
             if now - data["created_at"] > 60:
+
+                try:
+                    await asyncio.to_thread(
+                        Payment.cancel,
+                        payment_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось отменить платеж {payment_id}: {e}")
+
                 try:
                     await data["callback"].message.answer(
-                        "⌛ Время оплаты истекло. Создайте новый заказ."
+                        "⌛ Время оплаты истекло. Ссылка на оплату больше недействительна."
                     )
                 except Exception:
-                    logger.exception("Не удалось отправить уведомление об истечении")
-                # 10 минут
+                    logger.exception("Не удалось уведомить пользователя")
+
                 ACTIVE_PAYMENTS.pop(payment_id, None)
-                logger.info(f"Истекло время жизни платежа:{payment_id}")
                 continue
 
             payment = await fetch_payment_safe(payment_id)
