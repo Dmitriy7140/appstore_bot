@@ -165,31 +165,11 @@ async def payment_worker():
 
         for payment_id in list(ACTIVE_PAYMENTS.keys()):
             data = ACTIVE_PAYMENTS[payment_id]
-            if now - data["created_at"] > 560:
-
-                try:
-                    payment = await asyncio.to_thread(
-                        Payment.find_one,
-                        payment_id
-                    )
-
-                    logger.info(
-                        f"Платеж {payment_id}: status={payment.status}"
-                    )
-
-                    await asyncio.to_thread(
-                        Payment.cancel,
-                        payment_id
-                    )
-
-                except Exception:
-                    logger.exception(
-                        f"Ошибка отмены платежа {payment_id}"
-                    )
+            if now - data["created_at"] > 600:
 
                 try:
                     await data["callback"].message.answer(
-                        "⌛ Время оплаты истекло. Ссылка на оплату больше недействительна."
+                        "⌛ Время оплаты истекло. Создайте новый платеж."
                     )
                 except Exception:
                     logger.exception("Не удалось уведомить пользователя")
@@ -200,6 +180,14 @@ async def payment_worker():
             payment = await fetch_payment_safe(payment_id)
 
             if payment is None:
+                try:
+                    await data["callback"].message.answer(
+                        "⌛ Платеж больше недоступен. Создайте новый заказ."
+                    )
+                except Exception:
+                    pass
+
+                ACTIVE_PAYMENTS.pop(payment_id, None)
                 continue
 
             if payment.status in ("succeeded", "canceled"):
