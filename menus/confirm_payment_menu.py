@@ -165,7 +165,7 @@ async def payment_worker():
 
         for payment_id in list(ACTIVE_PAYMENTS.keys()):
             data = ACTIVE_PAYMENTS[payment_id]
-            if now - data["created_at"] > 610:
+            if now - data["created_at"] > 590:
 
                 try:
                     await asyncio.to_thread(
