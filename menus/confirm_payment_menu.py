@@ -61,7 +61,10 @@ async def wait_payment(callback, get_key, payment_id, sent_message):
             await sent_message.delete()
             logger.error(f"Время оплаты истекло у {callback.from_user.id}")
             return
-        payment = Payment.find_one(payment_id)
+        payment = await asyncio.to_thread(
+            Payment.find_one,
+            payment_id
+        )
 
         if payment.status == "succeeded":
             key = get_key(int(payment.amount.value))

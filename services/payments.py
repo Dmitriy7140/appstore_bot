@@ -1,5 +1,5 @@
 
-import uuid
+import uuid, asyncio
 
 from yookassa import Configuration, Payment
 from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
@@ -41,7 +41,7 @@ Configuration.secret_key = SECRET_KEY
 
 async def create_payment(amount: int, chat_id, user_id) -> tuple:
     id_key = str(uuid.uuid4())
-    payment = Payment.create({
+    payload = {
         "amount": {
             "value": str(RATES[amount]),
             "currency": "RUB"
@@ -73,39 +73,12 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
 
         "description": f"Оплата заказа user_id ({user_id})",
 
-    }, id_key)
-    # res = Receipt.create({
-    #     "customer": {
-    #         "email": "support2pay@gmail.com"
-    #     },
-    #     "type": "payment",
-    #     "payment_id": f"{payment.id}",
-    #     "on_behalf_of": f"{SHOP_ID}",
-    #     "send": True,
-    #     "items": [
-    #         {
-    #             "description": "Цифровой информационный материал",
-    #             "quantity": "1.00",
-    #             "amount": {
-    #                 "value": f"{str(RATES[amount])}",
-    #                 "currency": "RUB"
-    #             },
-    #             "vat_code": 1,
-    #             "payment_mode": "full_prepayment",
-    #             "payment_subject": "commodity"
-    #         }
-    #     ],
-    #     "tax_system_code": 1,
-    #     "settlements": [
-    #         {
-    #             "type": "cashless",
-    #             "amount": {
-    #                 "value": f"{str(RATES[amount])}",
-    #                 "currency": "RUB"
-    #             }
-    #         }
-    #     ]
-    # })
+    }
+    payment = await asyncio.to_thread(
+        Payment.create,
+        payload,
+        id_key
+    )
     logger.info(f"создали транзакцию для айди {user_id}")
     return payment.confirmation.confirmation_url, payment.id
 
