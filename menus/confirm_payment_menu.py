@@ -1,6 +1,6 @@
 import asyncio
-import socket
 import time
+from decimal import Decimal
 
 from aiogram import Router
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -59,14 +59,16 @@ async def process_payment(callback: CallbackQuery):
 
 
 # -------------------------
-# START WORKER (1 раз при старте бота)
+# WORKER
 # -------------------------
 async def payment_worker():
     while True:
         now = time.time()
 
         for payment_id in list(ACTIVE_PAYMENTS.keys()):
-            data = ACTIVE_PAYMENTS[payment_id]
+            data = ACTIVE_PAYMENTS.get(payment_id)
+            if not data:
+                continue
 
             # timeout
             if now - data["created_at"] > MAX_PAYMENT_LIFETIME:
@@ -76,58 +78,79 @@ async def payment_worker():
                         "⌛ Время оплаты истекло. Создайте новый заказ."
                     )
                 except Exception:
-                    pass
+                    logger.exception("Timeout message send failed")
 
                 ACTIVE_PAYMENTS.pop(payment_id, None)
                 continue
 
             payment = await fetch_payment_safe(payment_id)
-
             if not payment:
                 continue
 
             status = payment.status
 
+            # pending — ничего не делаем
             if status == "pending":
                 continue
 
+            # canceled
             if status == "canceled":
-                await bot.send_message(data["chat_id"], "❌ Платеж отменен.")
+                try:
+                    await bot.send_message(
+                        data["chat_id"],
+                        "❌ Платеж отменен."
+                    )
+                except Exception:
+                    logger.exception("Cancel message failed")
+
                 ACTIVE_PAYMENTS.pop(payment_id, None)
                 continue
 
+            # succeeded
             if status == "succeeded":
 
-                amount = int(payment.amount.value)
-                user_id = data["user_id"]
+                try:
+                    amount = int(Decimal(payment.amount.value))  # 🔥 безопасно
 
-                key = sheets.get_key(amount)
+                    user_id = data["user_id"]
 
-                sheets.add_used(
-                    REV_RATES[amount],
-                    user_id,
-                    key
-                )
+                    # защита от неправильной суммы
+                    if amount not in REV_RATES:
+                        logger.error(f"Unknown payment amount: {amount}")
+                        ACTIVE_PAYMENTS.pop(payment_id, None)
+                        continue
 
-                await bot.send_message(
-                    data["chat_id"],
-                    f"✅ Оплата прошла!\n\n<code>{key}</code>",
-                    parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="Как активировать код?", callback_data="asfaq_code")],
-                        [InlineKeyboardButton(text="Как поменять регион?", callback_data="asfaq_region")]
-                    ])
-                )
+                    key = sheets.get_key(amount)
 
-                await send_transaction_notice(
-                    bot,
-                    telegram_id=user_id,
-                    tx_id=payment.id,
-                    amount=amount,
-                    code=key
-                )
+                    sheets.add_used(
+                        REV_RATES[amount],
+                        user_id,
+                        key
+                    )
 
-                ACTIVE_PAYMENTS.pop(payment_id, None)
+                    await bot.send_message(
+                        data["chat_id"],
+                        f"✅ Оплата прошла!\n\n<code>{key}</code>",
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="Как активировать код?", callback_data="asfaq_code")],
+                            [InlineKeyboardButton(text="Как поменять регион?", callback_data="asfaq_region")]
+                        ])
+                    )
+
+                    await send_transaction_notice(
+                        bot,
+                        telegram_id=user_id,
+                        tx_id=payment.id,
+                        amount=amount,
+                        code=key
+                    )
+
+                except Exception as e:
+                    logger.exception(f"Payment processing error: {e}")
+
+                finally:
+                    ACTIVE_PAYMENTS.pop(payment_id, None)
 
         await asyncio.sleep(CHECK_INTERVAL)
 
