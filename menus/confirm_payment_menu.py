@@ -71,47 +71,62 @@ async def wait_payment(
 
     while True:
 
-        try:
-            if (
-                asyncio.get_running_loop().time()
-                - start_time
-                > MAX_PAYMENT_LIFETIME
-            ):
+        # таймаут платежа
+        if (
+            asyncio.get_running_loop().time()
+            - start_time
+            > MAX_PAYMENT_LIFETIME
+        ):
+            try:
                 await bot.send_message(
                     chat_id,
                     "⌛ Время оплаты истекло. Создайте новый заказ."
                 )
+            except Exception:
+                logger.exception(
+                    f"Не удалось отправить таймаут {payment_id}"
+                )
 
-                try:
-                    await sent_message.delete()
-                except Exception:
-                    pass
+            try:
+                await sent_message.delete()
+            except Exception:
+                pass
 
-                return
+            logger.info(
+                f"Мониторинг остановлен по таймауту {payment_id}"
+            )
 
+            return
+
+        try:
             payment = await fetch_payment_safe(payment_id)
 
             if payment is None:
                 await asyncio.sleep(CHECK_INTERVAL)
                 continue
 
-            status = getattr(payment, "status", None)
+            status = payment.status
 
             if status == "pending":
                 await asyncio.sleep(CHECK_INTERVAL)
                 continue
 
             if status == "canceled":
-                await bot.send_message(
-                    chat_id,
-                    "❌ Платеж отменен."
-                )
+                try:
+                    await bot.send_message(
+                        chat_id,
+                        "❌ Платеж отменен."
+                    )
+                except Exception:
+                    logger.exception(
+                        f"Не удалось отправить отмену {payment_id}"
+                    )
+
                 return
 
             if status == "succeeded":
 
                 amount = int(payment.amount.value)
-
                 key = get_key(amount)
 
                 user_id = int(
@@ -126,26 +141,10 @@ async def wait_payment(
 
                 await bot.send_message(
                     chat_id,
-                    f"✅ Оплата прошла!\n\n"
-                    f"<code>{key}</code>",
-                    parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [
-                                InlineKeyboardButton(
-                                    text="Как активировать код?",
-                                    callback_data="asfaq_code"
-                                )
-                            ],
-                            [
-                                InlineKeyboardButton(
-                                    text="Как поменять регион?",
-                                    callback_data="asfaq_region"
-                                )
-                            ]
-                        ]
-                    )
+                    f"✅ Оплата прошла!\n\n<code>{key}</code>",
+                    parse_mode="HTML"
                 )
+
 
                 await send_transaction_notice(
                     bot,
@@ -156,20 +155,19 @@ async def wait_payment(
                 )
 
                 logger.info(
-                    f"Оплата подтверждена "
-                    f"user_id={user_id}"
+                    f"Платеж обработан {payment_id}"
                 )
 
                 return
 
-            await asyncio.sleep(CHECK_INTERVAL)
-
         except Exception:
             logger.exception(
-                f"Ошибка wait_payment {payment_id}"
+                f"Критическая ошибка платежа {payment_id}"
             )
 
-            await asyncio.sleep(15)
+            return
+
+        await asyncio.sleep(CHECK_INTERVAL)
 async def fetch_payment_safe(payment_id: str):
     try:
         return await asyncio.wait_for(
