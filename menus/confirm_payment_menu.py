@@ -11,48 +11,7 @@ from repository.sheets.sheets import sheets
 from services.sender_service import send_transaction_notice
 ACTIVE_PAYMENTS = {}
 rt = Router()
-async def fetch_payment_safe(payment_id: str):
-    for attempt in range(3):
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(Payment.find_one, payment_id),
-                timeout=5
-            )
 
-        except asyncio.TimeoutError:
-            logger.warning(f"Юкасса таймаут (попытка {attempt}) для {payment_id}")
-
-        except (socket.gaierror, OSError) as e:
-            logger.warning(f"Сетевая ошибка Юкассы (попытка {attempt}): {e}")
-
-        except Exception as e:
-            logger.warning(f"Неизвестная ошибка Юкассы (попытка {attempt}): {e}")
-
-        await asyncio.sleep(2 * (attempt + 1))  # backoff
-
-    return None
-async def payment_worker():
-    while True:
-        if not ACTIVE_PAYMENTS:
-            await asyncio.sleep(3)
-            continue
-
-        for payment_id in list(ACTIVE_PAYMENTS.keys()):
-            data = ACTIVE_PAYMENTS[payment_id]
-
-            payment = await fetch_payment_safe(payment_id)
-
-            if payment is None:
-                continue
-
-            if payment.status in ("succeeded", "canceled"):
-                try:
-                    await handle_payment(payment, data)
-                except Exception as e:
-                    logger.exception(f"Ошибка обработки платежа {payment_id}: {e}")
-                finally:
-                    ACTIVE_PAYMENTS.pop(payment_id, None)
-        await asyncio.sleep(5)
 @rt.callback_query(lambda c: c.data.startswith("pay/"))
 async def process_payment(callback: CallbackQuery):
 
@@ -174,3 +133,45 @@ async def handle_payment(payment, data):
         await callback.message.answer(
             "❌ Платеж отменен. Попробуйте еще раз или свяжитесь с менеджером @MANAGER_2PAY"
         )
+async def fetch_payment_safe(payment_id: str):
+    for attempt in range(3):
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(Payment.find_one, payment_id),
+                timeout=5
+            )
+
+        except asyncio.TimeoutError:
+            logger.warning(f"Юкасса таймаут (попытка {attempt}) для {payment_id}")
+
+        except (socket.gaierror, OSError) as e:
+            logger.warning(f"Сетевая ошибка Юкассы (попытка {attempt}): {e}")
+
+        except Exception as e:
+            logger.warning(f"Неизвестная ошибка Юкассы (попытка {attempt}): {e}")
+
+        await asyncio.sleep(2 * (attempt + 1))  # backoff
+
+    return None
+async def payment_worker():
+    while True:
+        if not ACTIVE_PAYMENTS:
+            await asyncio.sleep(3)
+            continue
+
+        for payment_id in list(ACTIVE_PAYMENTS.keys()):
+            data = ACTIVE_PAYMENTS[payment_id]
+
+            payment = await fetch_payment_safe(payment_id)
+
+            if payment is None:
+                continue
+
+            if payment.status in ("succeeded", "canceled"):
+                try:
+                    await handle_payment(payment, data)
+                except Exception as e:
+                    logger.exception(f"Ошибка обработки платежа {payment_id}: {e}")
+                finally:
+                    ACTIVE_PAYMENTS.pop(payment_id, None)
+        await asyncio.sleep(5)
