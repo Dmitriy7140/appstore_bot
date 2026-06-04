@@ -1,5 +1,7 @@
 import asyncio
 import socket
+import time
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram import Router
 from yookassa import Payment
@@ -43,6 +45,7 @@ async def process_payment(callback: CallbackQuery):
     )
 
     ACTIVE_PAYMENTS[payment_id] = {
+        "created_at": time.time(),
         "callback": callback,
         "get_key": sheets.get_key,
         "sent_message": sent
@@ -155,12 +158,24 @@ async def fetch_payment_safe(payment_id: str):
     return None
 async def payment_worker():
     while True:
+        now = time.time()
         if not ACTIVE_PAYMENTS:
             await asyncio.sleep(3)
             continue
 
         for payment_id in list(ACTIVE_PAYMENTS.keys()):
             data = ACTIVE_PAYMENTS[payment_id]
+            if now - data["created_at"] > 60:
+                try:
+                    await data["callback"].message.answer(
+                        "⌛ Время оплаты истекло. Создайте новый заказ."
+                    )
+                except Exception:
+                    logger.exception("Не удалось отправить уведомление об истечении")
+                # 10 минут
+                ACTIVE_PAYMENTS.pop(payment_id, None)
+                logger.info(f"Истекло время жизни платежа:{payment_id}")
+                continue
 
             payment = await fetch_payment_safe(payment_id)
 
