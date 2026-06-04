@@ -42,6 +42,7 @@ async def main():
     logger.info("БД подключена, запускаем бота...")
 
     # 3. запуск
+    asyncio.create_task(confirm_payment_menu.payment_worker())
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
