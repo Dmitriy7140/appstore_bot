@@ -190,7 +190,9 @@ def build_app(bot) -> web.Application:
 
 async def start_webhook_server(bot) -> web.AppRunner:
     """Поднимает aiohttp-сервер для уведомлений ЮKassa и возвращает runner."""
-    runner = web.AppRunner(build_app(bot))
+    # access_log=None — глушим «сырой» лог запросов (сканеры интернета флудят 404);
+    # осмысленные события (выдача ключа, недоверенный IP) логируются в _handle.
+    runner = web.AppRunner(build_app(bot), access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, WEBHOOK_HOST, WEBHOOK_PORT)
     await site.start()
