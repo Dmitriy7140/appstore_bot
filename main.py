@@ -18,6 +18,7 @@ async def main():
     await database.init_db()
     anal_sheets = AnalSheets()
     asyncio.create_task(anal_loop(anal_sheets))
+    asyncio.create_task(confirm_payment_menu.payment_worker())
 
     dp = Dispatcher()
 
