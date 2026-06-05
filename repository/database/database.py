@@ -69,7 +69,47 @@ async def init_db():
         database=DB_NAME,
         host=DB_HOST
     )
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS processed_payments (
+                payment_id TEXT PRIMARY KEY,
+                created_at TIMESTAMP NOT NULL DEFAULT now()
+            )
+        """)
     logger.info("Подключились к бд!")
+
+
+# -------------------------
+# ИДЕМПОТЕНТНОСТЬ ПЛАТЕЖЕЙ (вебхуки ЮKassa)
+# -------------------------
+async def claim_payment(payment_id: str) -> bool:
+    """
+    Атомарно «застолбить» платёж перед выдачей ключа.
+    True  — застолбили первыми, нужно обработать.
+    False — платёж уже обработан/обрабатывается, выдачу повторять нельзя.
+    """
+    p = get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("""
+            INSERT INTO processed_payments (payment_id)
+            VALUES ($1)
+            ON CONFLICT (payment_id) DO NOTHING
+            RETURNING payment_id
+        """, payment_id)
+    return row is not None
+
+
+async def release_payment(payment_id: str):
+    """
+    Снять метку, если выдача упала ДО извлечения ключа —
+    тогда повторное уведомление ЮKassa сможет обработать платёж заново.
+    """
+    p = get_pool()
+    async with p.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM processed_payments WHERE payment_id = $1",
+            payment_id
+        )
 
 def get_pool() -> asyncpg.Pool:
     if pool is None:

@@ -17,6 +17,10 @@ if TEST_MODE:
     DB_NAME = getenv("DB_NAME")
     DB_HOST = getenv("DB_HOST")
     ADMIN_IDS = list(map(int, getenv("ADMIN_IDS", "").split(",")))
+    WEBHOOK_HOST = getenv("WEBHOOK_HOST", "127.0.0.1")
+    WEBHOOK_PORT = int(getenv("WEBHOOK_PORT", "8080"))
+    WEBHOOK_PATH = getenv("WEBHOOK_PATH", "/yookassa/webhook")
+    YOOKASSA_ALLOWED_IPS = getenv("YOOKASSA_ALLOWED_IPS", "")
 else:
     BOT_TOKEN = getenv('BOT_TOKEN')
     SHOP_ID = getenv('SHOP_ID')
@@ -28,3 +32,7 @@ else:
     DB_NAME = getenv("DB_NAME")
     DB_HOST = getenv("DB_HOST")
     ADMIN_IDS = list(map(int, getenv("ADMIN_IDS", "").split(",")))
+    WEBHOOK_HOST = getenv("WEBHOOK_HOST", "127.0.0.1")
+    WEBHOOK_PORT = int(getenv("WEBHOOK_PORT", "8080"))
+    WEBHOOK_PATH = getenv("WEBHOOK_PATH", "/yookassa/webhook")
+    YOOKASSA_ALLOWED_IPS = getenv("YOOKASSA_ALLOWED_IPS", "")

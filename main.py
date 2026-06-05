@@ -8,6 +8,7 @@ from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
 from services.scheduler import start_scheduler
+from services.yookassa_webhook import start_webhook_server
 from commands import announce, allusers
 
 bot = Bot(token=BOT_TOKEN)
@@ -18,7 +19,6 @@ async def main():
     await database.init_db()
     anal_sheets = AnalSheets()
     asyncio.create_task(anal_loop(anal_sheets))
-    asyncio.create_task(confirm_payment_menu.payment_worker())
 
     dp = Dispatcher()
 
@@ -44,6 +44,10 @@ async def main():
 
     # 3. запуск
 
+    # HTTP-сервер для уведомлений ЮKassa (подтверждение оплат)
+    await start_webhook_server(bot)
+
+    # апдейты Telegram по-прежнему забираем поллингом
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
