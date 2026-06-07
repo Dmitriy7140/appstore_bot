@@ -117,6 +117,15 @@ def get_pool() -> asyncpg.Pool:
     return pool
 
 
+async def close_pool():
+    """Корректно закрыть пул соединений при остановке бота."""
+    global pool
+    if pool is not None:
+        await pool.close()
+        pool = None
+        logger.info("Пул БД закрыт")
+
+
 # -------------------------
 # ТРАНЗАКЦИИ / БИЗНЕС-ЛОГИКА
 # -------------------------

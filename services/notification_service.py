@@ -2,6 +2,7 @@ from aiogram.types import Message
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 import asyncio
 from asyncio import Queue
+from contextlib import suppress
 from aiogram import Bot
 
 
@@ -12,6 +13,7 @@ class Mailer:
         self.logger = logger
         self.workers = workers
         self.queue: Queue = asyncio.Queue()
+        self._tasks: list[asyncio.Task] = []
 
         self.success = 0
         self.failed = 0
@@ -43,8 +45,15 @@ class Mailer:
                 self.queue.task_done()
 
     async def start(self):
-        for _ in range(self.workers):
-            asyncio.create_task(self.worker())
+        self._tasks = [asyncio.create_task(self.worker()) for _ in range(self.workers)]
+
+    async def stop(self):
+        for t in self._tasks:
+            t.cancel()
+        for t in self._tasks:
+            with suppress(asyncio.CancelledError):
+                await t
+        self._tasks.clear()
 
     async def send_to_many(self, users, msg: Message):
         self.success = 0

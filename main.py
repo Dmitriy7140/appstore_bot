@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 from aiogram import Bot, Dispatcher
 from config.config_env import BOT_TOKEN
 from config.utils import logger
@@ -17,8 +18,9 @@ bot = Bot(token=BOT_TOKEN)
 async def main():
 
     await database.init_db()
+
     anal_sheets = AnalSheets()
-    asyncio.create_task(anal_loop(anal_sheets))
+    anal_task = asyncio.create_task(anal_loop(anal_sheets))
 
     dp = Dispatcher()
 
@@ -38,18 +40,53 @@ async def main():
     await mailer.start()
 
     dp["mailer"] = mailer
-    start_scheduler()
+    scheduler = start_scheduler()
 
     logger.info("БД подключена, запускаем бота...")
 
     # 3. запуск
 
     # HTTP-сервер для уведомлений ЮKassa (подтверждение оплат)
-    await start_webhook_server(bot)
+    webhook_runner = await start_webhook_server(bot)
 
     # апдейты Telegram по-прежнему забираем поллингом
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+
+    try:
+        # aiogram сам ловит SIGTERM/SIGINT и корректно останавливает поллинг.
+        # close_bot_session=False — сессию закроем сами, ПОСЛЕДНЕЙ, после остальной уборки.
+        await dp.start_polling(bot, close_bot_session=False)
+    finally:
+        # Детерминированный shutdown: гасим всё, что держит процесс, чтобы
+        # systemctl stop/restart были мгновенными (а не ждали SIGKILL по таймауту).
+        logger.info("Останавливаемся — гасим фоновые задачи и ресурсы...")
+
+        # 1. перестаём принимать вебхуки ЮKassa
+        with suppress(Exception):
+            await webhook_runner.cleanup()
+
+        # 2. фоновая аналитика
+        anal_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await anal_task
+
+        # 3. воркеры рассылки
+        with suppress(Exception):
+            await mailer.stop()
+
+        # 4. планировщик отчётов
+        with suppress(Exception):
+            scheduler.shutdown(wait=False)
+
+        # 5. пул соединений БД
+        with suppress(Exception):
+            await database.close_pool()
+
+        # 6. сессия бота — в самом конце
+        with suppress(Exception):
+            await bot.session.close()
+
+        logger.info("Завершились чисто.")
 
 
 if __name__ == "__main__":
