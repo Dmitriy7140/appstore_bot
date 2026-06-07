@@ -4,6 +4,7 @@ import gspread
 
 from config.utils import logger
 from repository.database.database import get_daily_transactions_stats
+from repository.sheets.sheets import run_sheet
 
 
 class MarketingReportService:
@@ -38,8 +39,9 @@ class MarketingReportService:
             formatted_sum    # D
         ]
 
-        # 5. append в таблицу
-        self.sheet.append_row(
+        # 5. append в таблицу (в выделенном потоке — не блокируя event loop)
+        await run_sheet(
+            self.sheet.append_row,
             row,
             value_input_option="USER_ENTERED"
         )
