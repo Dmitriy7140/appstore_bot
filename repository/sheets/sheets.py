@@ -1,9 +1,28 @@
+import asyncio
+import functools
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 import gspread
 import random
 
 from config.utils import logger
+
+
+# Единый пул из ОДНОГО потока для ВСЕХ обращений к Google Sheets (gspread).
+# gspread синхронный и не потокобезопасный, а его вызовы медленные (HTTP к Google).
+# Один выделенный поток даёт сразу три эффекта:
+#   1) вызовы не блокируют event loop (всё уходит через run_in_executor);
+#   2) они НЕ забивают дефолтный пул asyncio, где живёт DNS-резолв
+#      (getaddrinfo для api.telegram.org) — поэтому Telegram больше не голодает;
+#   3) сериализация доступа к таблице убирает гонку за один и тот же ключ.
+_SHEETS_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheets")
+
+
+async def run_sheet(func, *args, **kwargs):
+    """Выполнить синхронный вызов к таблице в выделенном потоке, не блокируя loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_SHEETS_POOL, functools.partial(func, *args, **kwargs))
 
 
 class Sheets:

@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery, InputMediaPhoto, FSInputFile, InlineKey
     InputMediaVideo
 from config.config_messages import FAQ_TEXTS
 
-from repository.sheets.sheets import sheets
+from repository.sheets.sheets import sheets, run_sheet
 
 
 rt = Router()
@@ -80,7 +80,7 @@ async def send_as_faq(callback: CallbackQuery):
         )
         await callback.answer()
     elif option == "adress":
-        a=sheets.get_address()
+        a=await run_sheet(sheets.get_address)
         text=("<b>Отправляем вам данные Турецкого адреса, вводите без ошибок:\n\n"
               "<i>Текст копируется при нажатии</i>\n"
             f"Street:  <code>{a['street']}</code>\n"

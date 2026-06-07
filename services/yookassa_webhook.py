@@ -20,7 +20,7 @@ from config.config_env import (
     WEBHOOK_HOST, WEBHOOK_PORT, WEBHOOK_PATH,
     YOOKASSA_ALLOWED_IPS, ADMIN_CHAT_ID,
 )
-from repository.sheets.sheets import sheets
+from repository.sheets.sheets import sheets, run_sheet
 from services.payments import REV_RATES
 from services.sender_service import send_transaction_notice
 from repository.database.database import claim_payment, release_payment
@@ -125,7 +125,7 @@ async def _handle(request: web.Request) -> web.Response:
 
     # --- 1. Извлекаем ключ. Это расходует инвентарь — точка невозврата. ---
     try:
-        key = await asyncio.to_thread(sheets.get_key, amount_rub)
+        key = await run_sheet(sheets.get_key, amount_rub)
     except Exception as e:
         logger.exception(f"Платёж {payment_id}: ошибка получения ключа: {e}")
         await release_payment(payment_id)          # ключ не тронут — ретрай безопасен
@@ -143,7 +143,7 @@ async def _handle(request: web.Request) -> web.Response:
 
     # --- 2. Ключ извлечён. Дальше claim НЕ отпускаем (иначе двойная выдача). ---
     try:
-        await asyncio.to_thread(sheets.add_used, REV_RATES[amount_rub], user_id, key)
+        await run_sheet(sheets.add_used, REV_RATES[amount_rub], user_id, key)
 
         await bot.send_message(
             chat_id,

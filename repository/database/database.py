@@ -5,7 +5,7 @@ from aiogram import BaseMiddleware
 from typing import Callable, Dict, Any, Awaitable
 from config.config_env import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, ADMIN_CHAT_ID
 
-from repository.sheets.sheets import sheets
+from repository.sheets.sheets import sheets, run_sheet
 
 from asyncio import Queue
 
@@ -263,7 +263,7 @@ async def process_referral_reward(telegram_id: int):
             """, telegram_id)
 
             # 2. берём ключ
-            key = sheets.get_key(300)  # или логика от service/amount
+            key = await run_sheet(sheets.get_key, 300)  # или логика от service/amount
 
             if not key:
                 logger.error("Нет ключей для выдачи!")

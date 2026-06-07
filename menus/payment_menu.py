@@ -2,7 +2,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram import Router
 from services.payments import  RATES
-from repository.sheets.sheets import sheets
+from repository.sheets.sheets import sheets, run_sheet
 
 rt = Router()
 
@@ -20,7 +20,7 @@ async def handle_amount(callback: CallbackQuery):
 
     amount = int(amount)
 
-    if sheets.has_available_keys(RATES[amount]):
+    if await run_sheet(sheets.has_available_keys, RATES[amount]):
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
