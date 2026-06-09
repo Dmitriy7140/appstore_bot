@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from config.config_env import BOT_TOKEN
 from config.utils import logger
+from services.tg_retry import RetryRequestMiddleware
 
 from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal_menu, confirm_payment_menu
 from repository.database import database
@@ -29,6 +30,8 @@ def _make_session() -> AiohttpSession:
 
 
 bot = Bot(token=BOT_TOKEN, session=_make_session())
+# повтор запросов к Telegram при сетевых обрывах канала
+bot.session.middleware(RetryRequestMiddleware())
 
 
 async def main():
