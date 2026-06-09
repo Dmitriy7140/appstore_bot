@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import suppress
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
 from config.config_env import BOT_TOKEN
 from config.utils import logger
 
@@ -12,7 +13,22 @@ from services.scheduler import start_scheduler
 from services.yookassa_webhook import start_webhook_server
 from commands import announce, allusers
 
-bot = Bot(token=BOT_TOKEN)
+def _make_session() -> AiohttpSession:
+    """
+    Сессия Telegram, устойчивая к нестабильному каналу.
+
+    На малонагруженном боте keep-alive соединения к api.telegram.org простаивают
+    и закрываются Telegram/NAT'ом — а aiohttp пытается их переиспользовать и падает
+    с ServerDisconnectedError. force_close=True заставляет открывать СВЕЖЕЕ соединение
+    на каждый запрос: лишний TLS-handshake (для нашего трафика незаметно), зато
+    протухших соединений в пуле не остаётся.
+    """
+    session = AiohttpSession()
+    session._connector_init["force_close"] = True
+    return session
+
+
+bot = Bot(token=BOT_TOKEN, session=_make_session())
 
 
 async def main():
