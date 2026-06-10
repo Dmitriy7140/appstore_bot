@@ -1,10 +1,11 @@
 from aiogram.enums import ParseMode
-from aiogram.types import FSInputFile, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup
 
 from config.config_messages import SERVICES, AMOUNTS
 from config.config_env import ADMIN_CHAT_ID, TEST_MODE
 
 from repository.database.database import add_transaction
+from services.media_cache import send_cached_photo
 
 
 
@@ -17,38 +18,19 @@ async def lazy_send_photo(callback, service: str, keyboard:InlineKeyboardMarkup)
         service, _ = service.split(":")
 
         data = AMOUNTS[service]
-        folder= "static/amounts"
+        folder = "static/amounts"
     else:
         data = SERVICES[service]
         folder = "static/menus"
 
-
-    if data["file_id"]:
-        await callback.message.answer_photo(
-            photo=data["file_id"],
-            caption=data["text"],
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard
-        )
-        return
-
-
-    photo = FSInputFile(f"{folder}/{service}.png")
-
-    msg = await callback.message.answer_photo(
-        photo=photo,
+    # file_id-кэш (postgres) сам решает: слать строкой или залить файл один раз
+    await send_cached_photo(
+        callback.message,
+        f"{folder}/{service}.png",
         caption=data["text"],
         parse_mode=ParseMode.HTML,
-        reply_markup=keyboard
+        reply_markup=keyboard,
     )
-
-
-    file_id = msg.photo[-1].file_id
-
-    if callback.data.endswith("topup"):
-        AMOUNTS[service]["file_id"] = file_id
-    else:
-        SERVICES[service]["file_id"] = file_id
 
 async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, code:str):
     await add_transaction(bot, telegram_id, tx_id, amount)

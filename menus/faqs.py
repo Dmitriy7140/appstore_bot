@@ -1,9 +1,9 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InputMediaPhoto, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, \
-    InputMediaVideo
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from config.config_messages import FAQ_TEXTS
 
 from repository.sheets.sheets import sheets, run_sheet
+from services.media_cache import send_cached_media_group
 
 
 rt = Router()
@@ -30,39 +30,20 @@ FAQ_IMSTUPID = [
 async def send_as_faq(callback: CallbackQuery):
     tag, option = callback.data.split("_")
     if option == "code":
-        media = [
-            InputMediaVideo(
-                media=FSInputFile(FAQ_CODE[0]),
-                caption=
-                ("После получения кода:\n\n"
-
-                 "1. Зайдите в App Store и нажмите на иконку вашего имени в верхнем правом углу.\n\n"
-                 "2. Нажмите на кнопку \"Redeem Gift Card or Code\"\n\n'"
-                 "3. Далее нажмите на \"You can also enter your code manually\"\n\n"
-
-                 "4. Введите полученный код. Теперь вы можете оплачивать подписки!)")
-
-            ),
-            # InputMediaPhoto(media=FSInputFile(FAQ_CODE[1])),
-            # InputMediaPhoto(media=FSInputFile(FAQ_CODE[2])),
-        ]
-
-        await callback.message.answer_media_group(media)
+        caption = ("После получения кода:\n\n"
+                   "1. Зайдите в App Store и нажмите на иконку вашего имени в верхнем правом углу.\n\n"
+                   "2. Нажмите на кнопку \"Redeem Gift Card or Code\"\n\n'"
+                   "3. Далее нажмите на \"You can also enter your code manually\"\n\n"
+                   "4. Введите полученный код. Теперь вы можете оплачивать подписки!)")
+        await send_cached_media_group(callback.message, [
+            {"path": FAQ_CODE[0], "kind": "video", "caption": caption},
+        ])
         await callback.answer()
     elif option == "region":
-        media = [
-            InputMediaPhoto(
-                media=FSInputFile(FAQ_REGION[0]),
-                caption = FAQ_TEXTS[tag][option],
-                parse_mode="HTML",
-
-
-            ),
-            InputMediaPhoto(media=FSInputFile(FAQ_REGION[1])),
-
-
-        ]
-        await callback.message.answer_media_group(media)
+        await send_cached_media_group(callback.message, [
+            {"path": FAQ_REGION[0], "kind": "photo", "caption": FAQ_TEXTS[tag][option], "parse_mode": "HTML"},
+            {"path": FAQ_REGION[1], "kind": "photo"},
+        ])
         await callback.message.answer(
             "<b>Чтобы получить адрес для смены региона, жмите кнопку ниже 👇</b>",
             reply_markup=InlineKeyboardMarkup(
@@ -106,18 +87,7 @@ async def send_as_faq(callback: CallbackQuery):
 
                 '👩 Остались вопросы — менеджер Анна → @manager_2pay\n'
                 '🤖 Сменить регион и пополнить App Store → @official_2paybot\n')
-        media = [
-            InputMediaPhoto(
-                media=FSInputFile(FAQ_IMSTUPID[0]),
-                caption=caption,
-                parse_mode="HTML",
-
-            ),
-            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[1])),
-            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[2])),
-            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[3])),
-            InputMediaPhoto(media=FSInputFile(FAQ_IMSTUPID[4])),
-
-        ]
-        await callback.message.answer_media_group(media)
+        items = [{"path": FAQ_IMSTUPID[0], "kind": "photo", "caption": caption, "parse_mode": "HTML"}]
+        items += [{"path": p, "kind": "photo"} for p in FAQ_IMSTUPID[1:]]
+        await send_cached_media_group(callback.message, items)
         await callback.answer()

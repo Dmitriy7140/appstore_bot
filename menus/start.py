@@ -4,12 +4,11 @@ from aiogram.types import Message, CallbackQuery
 
 from keyboards.service_buttons import service_keyboard
 
-from aiogram.types import FSInputFile
-
 from repository.database.database import add_client_source, add_referral
+from services.media_cache import send_cached_photo
 
 
-photo = FSInputFile("static/menus/as.png")
+MAIN_MENU_PHOTO = "static/menus/as.png"
 
 rt = Router()
 
@@ -50,11 +49,11 @@ async def show_main_menu(target: Message|CallbackQuery):
             
             "<b>🇹🇷 Мы поможем сменить регион и выдадим подарочную карту за 2 минуты. Выбирайте нужный раздел 👇</b>")
     if isinstance(target, Message):
-        await target.answer_photo( caption=text, photo=photo, reply_markup=service_keyboard("as"), parse_mode="html")
+        await send_cached_photo(target, MAIN_MENU_PHOTO, caption=text, reply_markup=service_keyboard("as"), parse_mode="html")
 
     elif isinstance(target, CallbackQuery):
 
-        await target.message.answer_photo(caption=text, photo=photo, reply_markup=service_keyboard("as"), parse_mode="html")
+        await send_cached_photo(target.message, MAIN_MENU_PHOTO, caption=text, reply_markup=service_keyboard("as"), parse_mode="html")
         await target.answer()
 
 

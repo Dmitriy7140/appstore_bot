@@ -76,6 +76,14 @@ async def init_db():
                 created_at TIMESTAMP NOT NULL DEFAULT now()
             )
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS media_cache (
+                key TEXT PRIMARY KEY,
+                file_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                updated_at TIMESTAMP NOT NULL DEFAULT now()
+            )
+        """)
     logger.info("Подключились к бд!")
 
 
@@ -124,6 +132,38 @@ async def close_pool():
         await pool.close()
         pool = None
         logger.info("Пул БД закрыт")
+
+
+# -------------------------
+# КЭШ file_id ТЕЛЕГРАМА (чтобы не перезаливать фото/видео на плохом канале)
+# -------------------------
+_media_l1: dict[str, str] = {}   # L1-кэш в памяти перед БД (skip round-trip на горячем пути)
+
+
+async def get_file_id(key: str) -> str | None:
+    cached = _media_l1.get(key)
+    if cached is not None:
+        return cached
+    p = get_pool()
+    async with p.acquire() as conn:
+        file_id = await conn.fetchval(
+            "SELECT file_id FROM media_cache WHERE key = $1", key
+        )
+    if file_id:
+        _media_l1[key] = file_id
+    return file_id
+
+
+async def set_file_id(key: str, file_id: str, kind: str):
+    _media_l1[key] = file_id
+    p = get_pool()
+    async with p.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO media_cache (key, file_id, kind, updated_at)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (key) DO UPDATE
+            SET file_id = EXCLUDED.file_id, kind = EXCLUDED.kind, updated_at = now()
+        """, key, file_id, kind)
 
 
 # -------------------------
