@@ -1,4 +1,14 @@
 import asyncio
+import socket
+
+# gspread ходит в Google Sheets синхронно и БЕЗ таймаута → при сбое/недоступности
+# Sheets запрос виснет НАВСЕГДА, намертво занимает поток пула run_sheet, и каскадно
+# подвешивает бота: process_referral_reward держит при этом коннект БД → пул asyncpg
+# исчерпывается → UserMiddleware виснет на каждом апдейте → встают и кнопки, и вебхуки
+# (ключи/уведомления). Глобальный socket-таймаут заставляет такие блокирующие запросы
+# падать через 20с, а не висеть. async-сокеты (asyncpg, aiohttp) неблокирующие — их это не трогает.
+socket.setdefaulttimeout(20)
+
 from contextlib import suppress
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -16,13 +26,14 @@ from commands import announce, allusers
 
 def _make_session() -> AiohttpSession:
     """
-    Сессия Telegram, устойчивая к нестабильному каналу.
+    Сессия Telegram под нестабильный канал.
 
-    На малонагруженном боте keep-alive соединения к api.telegram.org простаивают
-    и закрываются Telegram/NAT'ом — а aiohttp пытается их переиспользовать и падает
-    с ServerDisconnectedError. force_close=True заставляет открывать СВЕЖЕЕ соединение
-    на каждый запрос: лишний TLS-handshake (для нашего трафика незаметно), зато
-    протухших соединений в пуле не остаётся.
+    force_close=True — каждый запрос (включая long-poll getUpdates) идёт на СВЕЖЕМ
+    соединении. Это критично для приёма апдейтов: при keep-alive протухшее
+    переиспользуемое соединение могло подвесить getUpdates без таймаута — приём
+    вставал (кнопки переставали работать), хотя отправка жила. Надёжность приёма
+    важнее лишнего TLS-handshake; основную задержку всё равно сняла file_id-кэш
+    (фото шлются строкой, а не файлом).
     """
     session = AiohttpSession()
     session._connector_init["force_close"] = True

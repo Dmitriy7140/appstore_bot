@@ -286,10 +286,9 @@ async def add_referral(telegram_id: int, payload: str):
 async def process_referral_reward(telegram_id: int):
     p = get_pool()
 
+    # 1. атомарно «застолбить» реферал (короткая транзакция, БЕЗ медленных вызовов внутри)
     async with p.acquire() as conn:
         async with conn.transaction():
-
-            # берём НЕобработанный реферал и блокируем строку
             row = await conn.fetchrow("""
                 SELECT invited_by, service
                 FROM referrals
@@ -303,34 +302,33 @@ async def process_referral_reward(telegram_id: int):
 
             inviter_id = row["invited_by"]
 
-
-            # 1. активируем
             await conn.execute("""
                 UPDATE referrals
                 SET activated = TRUE
                 WHERE user_id = $1
             """, telegram_id)
+    # ← соединение с БД ОСВОБОЖДЕНО здесь
 
-            # 2. берём ключ
-            key = await run_sheet(sheets.get_key, 300)  # или логика от service/amount
+    # 2. ключ берём ВНЕ соединения с БД: gspread не должен держать коннект из пула —
+    #    зависший Sheets иначе исчерпает пул asyncpg и подвесит весь бот
+    key = await run_sheet(sheets.get_key, 300)
 
-            if not key:
-                logger.error("Нет ключей для выдачи!")
-                return None
+    if not key:
+        logger.error("Нет ключей для выдачи!")
+        return None
 
-            # 3. фиксируем выдачу (ВАЖНО: до отправки сообщения)
-            await conn.execute("""
-                UPDATE referrals
-                SET reward_given = TRUE
-                WHERE user_id = $1
-            """, telegram_id)
+    # 3. фиксируем выдачу отдельной короткой транзакцией
+    async with p.acquire() as conn:
+        await conn.execute("""
+            UPDATE referrals
+            SET reward_given = TRUE
+            WHERE user_id = $1
+        """, telegram_id)
 
-
-
-        return {
-            "inviter_id": inviter_id,
-            "key": key
-            }
+    return {
+        "inviter_id": inviter_id,
+        "key": key
+    }
 async def send_referral_reward(bot, inviter_id: int, key: str):
     try:
         user_link = f"tg://user?id={inviter_id}"
