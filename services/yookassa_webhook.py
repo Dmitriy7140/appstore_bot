@@ -9,16 +9,18 @@ metadata платежа — она проставляется в services/paymen
 (см. repository/database/database.claim_payment).
 """
 import asyncio
+import json
 from decimal import Decimal, InvalidOperation
 from ipaddress import ip_address, ip_network
 
+import aiohttp
 from aiohttp import web
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config.utils import logger
 from config.config_env import (
     WEBHOOK_HOST, WEBHOOK_PORT, WEBHOOK_PATH,
-    YOOKASSA_ALLOWED_IPS, ADMIN_CHAT_ID,
+    YOOKASSA_ALLOWED_IPS, ADMIN_CHAT_ID, MANAGER_WEBHOOK_URL,
 )
 from repository.sheets.sheets import sheets, run_sheet
 from services.payments import REV_RATES
@@ -77,6 +79,37 @@ async def _alert_admin(bot, text: str):
         logger.exception("Не смог отправить алерт админу")
 
 
+async def _forward_to_manager(raw: bytes, payment_id: str) -> web.Response:
+    """
+    Пересылает сырое тело уведомления на Apps Script менеджера (сайтовые оплаты).
+    Его скрипт сам перепроверяет платёж через API ЮKassa и дедупит по payment_id,
+    поэтому повторная пересылка безопасна. На любую неудачу возвращаем не-200,
+    чтобы ЮKassa повторила уведомление позже.
+    """
+    if not MANAGER_WEBHOOK_URL:
+        logger.error(f"MANAGER_WEBHOOK_URL не задан — сайтовый платёж {payment_id} не переслан")
+        # квитируем, иначе ЮKassa будет ретраить в пустоту
+        return web.Response(status=200)
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                MANAGER_WEBHOOK_URL,
+                data=raw,
+                headers={"Content-Type": "application/json"},
+            ) as resp:
+                body = (await resp.text())[:200]
+                if resp.status == 200:
+                    logger.info(f"Сайтовый платёж {payment_id} переслан менеджеру: {body}")
+                    return web.Response(status=200)
+                logger.error(f"Менеджер вернул {resp.status} на платёж {payment_id}: {body}")
+                return web.Response(status=502)
+    except Exception as e:
+        logger.exception(f"Не смог переслать платёж {payment_id} менеджеру: {e}")
+        return web.Response(status=502)
+
+
 async def _handle(request: web.Request) -> web.Response:
     bot = request.app["bot"]
 
@@ -85,8 +118,10 @@ async def _handle(request: web.Request) -> web.Response:
         logger.warning(f"Webhook с недоверенного IP: {ip!r}")
         return web.Response(status=403)
 
+    # читаем сырые байты: их же передаём менеджеру без изменений
     try:
-        data = await request.json()
+        raw = await request.read()
+        data = json.loads(raw)
     except Exception:
         logger.warning("Webhook: тело запроса не JSON")
         return web.Response(status=400)
@@ -103,6 +138,13 @@ async def _handle(request: web.Request) -> web.Response:
         return web.Response(status=200)
 
     meta = obj.get("metadata") or {}
+
+    # Сайтовые оплаты несут в metadata email покупателя (у ботовых там только
+    # chat_id/user_id). Их выдачей кода на email занимается Apps Script менеджера —
+    # просто пересылаем ему тело as-is и НИЧЕГО не трогаем у себя (ключи, инвентарь).
+    if meta.get("email"):
+        logger.info(f"Платёж {payment_id} — сайтовый, пересылаем менеджеру")
+        return await _forward_to_manager(raw, payment_id)
     try:
         user_id = int(meta["user_id"])
         chat_id = int(meta.get("chat_id", user_id))
