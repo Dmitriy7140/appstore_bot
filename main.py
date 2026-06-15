@@ -1,4 +1,5 @@
 import asyncio
+import os
 import socket
 
 # gspread ходит в Google Sheets синхронно и БЕЗ таймаута → при сбое/недоступности
@@ -45,12 +46,57 @@ bot = Bot(token=BOT_TOKEN, session=_make_session())
 bot.session.middleware(RetryRequestMiddleware())
 
 
+async def _watchdog():
+    """
+    Раз в минуту логирует состояние ресурсов — чтобы ПОЙМАТЬ медленную утечку,
+    из-за которой бот «залипает» через 7-8 часов. По логам перед заморозкой будет
+    видно, что упёрлось в потолок:
+      • db_pool idle падает до 0 и держится → исчерпан пул соединений БД (где-то держат коннект);
+      • tasks безудержно растёт → хендлеры копятся (висят на await, не завершаются);
+      • fds растёт → утечка сокетов/файловых дескрипторов;
+      • watchdog ВООБЩЕ перестал писать → event loop заблокирован синхронным вызовом.
+    """
+    pid = os.getpid()
+    stuck = 0
+    while True:
+        try:
+            pool = database.pool
+            size = pool.get_size() if pool is not None else -1
+            idle = pool.get_idle_size() if pool is not None else -1
+            tasks = len(asyncio.all_tasks())
+            try:
+                fds = len(os.listdir(f"/proc/{pid}/fd"))
+            except Exception:
+                fds = -1
+            msg = f"[watchdog] db_pool size={size} idle={idle} | tasks={tasks} | fds={fds}"
+
+            # «застряли»: пул создан, но свободных коннектов нет (кто-то их держит)
+            bad = (size > 0 and idle == 0)
+            stuck = stuck + 1 if bad else 0
+
+            if bad or tasks > 200 or (fds != -1 and fds > 800):
+                logger.warning(msg + f"  <-- ВОЗМОЖНОЕ ИСЧЕРПАНИЕ РЕСУРСА (stuck={stuck}мин)")
+            else:
+                logger.info(msg)
+
+            # самолечение: пул пуст 5 минут подряд = бот завис и сам не выйдет.
+            # Логируем состояние (для диагностики) и жёстко выходим → systemd
+            # перезапустит (Restart=always). Не ждём часами, пока заметят.
+            if stuck >= 5:
+                logger.critical(f"[watchdog] пул БД пуст 5 мин подряд — БОТ ЗАВИС, перезапуск. {msg}")
+                os._exit(1)
+        except Exception:
+            logger.exception("[watchdog] error")
+        await asyncio.sleep(60)
+
+
 async def main():
 
     await database.init_db()
 
     anal_sheets = AnalSheets()
     anal_task = asyncio.create_task(anal_loop(anal_sheets))
+    watchdog_task = asyncio.create_task(_watchdog())
 
     dp = Dispatcher()
 
@@ -95,10 +141,14 @@ async def main():
         with suppress(Exception):
             await webhook_runner.cleanup()
 
-        # 2. фоновая аналитика
+        # 2. фоновая аналитика + вотчдог
         anal_task.cancel()
         with suppress(asyncio.CancelledError):
             await anal_task
+
+        watchdog_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await watchdog_task
 
         # 3. воркеры рассылки
         with suppress(Exception):
