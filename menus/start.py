@@ -4,6 +4,7 @@ from aiogram.types import Message, CallbackQuery
 
 from keyboards.service_buttons import service_keyboard
 
+from menus.deeplinks import handle_deeplink
 from repository.database.database import add_client_source, add_referral
 from services.media_cache import send_cached_photo
 
@@ -16,6 +17,14 @@ rt = Router()
 async def start(message: Message, command:CommandObject):
     payload = command.args
     if payload:
+        # Составной payload "<меню>__<источник>": до "__" — ключ меню (callback_data),
+        # после — источник (канал). Без "__" payload целиком и меню, и источник.
+        if "__" in payload:
+            menu_key, _, source = payload.partition("__")
+        else:
+            menu_key = source = payload
+
+        # сначала фиксируем лид — откуда пришли (в т.ч. по deep-link на меню)
         if payload.startswith("ref"):
             await add_referral(
                 telegram_id=message.from_user.id,
@@ -24,8 +33,12 @@ async def start(message: Message, command:CommandObject):
         else:
             await add_client_source(
                 telegram_id=message.from_user.id,
-                payload=payload
+                payload=source
             )
+        # deep-link на конкретное меню: menu_key == callback_data кнопки.
+        # Совпало — показываем это меню первым сообщением и выходим.
+        if await handle_deeplink(message, menu_key):
+            return
     await show_main_menu(message)
 
 

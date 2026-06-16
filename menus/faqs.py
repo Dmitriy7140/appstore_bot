@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from config.config_messages import FAQ_TEXTS
 
 from repository.sheets.sheets import sheets, run_sheet
@@ -26,6 +26,44 @@ FAQ_IMSTUPID = [
 ]
 
 
+async def send_region_faq(message: Message):
+    """Гайд по смене региона + кнопка «Получить адрес».
+
+    Вынесено отдельно, чтобы это меню можно было показать и по колбэку
+    (asfaq_region), и первым сообщением по deep-link (см. menus/deeplinks.py).
+    Принимает Message, поэтому target — callback.message ИЛИ message из /start.
+    """
+    await send_cached_media_group(message, [
+        {"path": FAQ_REGION[0], "kind": "photo", "caption": FAQ_TEXTS["asfaq"]["region"], "parse_mode": "HTML"},
+        {"path": FAQ_REGION[1], "kind": "photo"},
+    ])
+    await message.answer(
+        "<b>Чтобы получить адрес для смены региона, жмите кнопку ниже 👇</b>",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Получить адрес",
+                    callback_data="asfaq_adress",
+                    style="success",
+                )
+            ]]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def send_questions_faq(message: Message):
+    """«Ответы на вопросы» — серия фото. Принимает Message: зовётся и из колбэка
+    (asfaq_questions), и первым сообщением по deep-link (menus/deeplinks.py)."""
+    caption = ('Это самое волнительное — менять что-то в своём iPhone. Но бояться нечего: ваш аккаунт остаётся вашим, ничего не потеряется, а мы рядом на каждом шаге ❤️\n\n'
+
+               '👩 Остались вопросы — менеджер Анна → @manager_2pay\n'
+               '🤖 Сменить регион и пополнить App Store → @official_2paybot\n')
+    items = [{"path": FAQ_IMSTUPID[0], "kind": "photo", "caption": caption, "parse_mode": "HTML"}]
+    items += [{"path": p, "kind": "photo"} for p in FAQ_IMSTUPID[1:]]
+    await send_cached_media_group(message, items)
+
+
 @rt.callback_query(F.data.startswith("asfaq"))
 async def send_as_faq(callback: CallbackQuery):
     tag, option = callback.data.split("_")
@@ -40,25 +78,7 @@ async def send_as_faq(callback: CallbackQuery):
         ])
         await callback.answer()
     elif option == "region":
-        await send_cached_media_group(callback.message, [
-            {"path": FAQ_REGION[0], "kind": "photo", "caption": FAQ_TEXTS[tag][option], "parse_mode": "HTML"},
-            {"path": FAQ_REGION[1], "kind": "photo"},
-        ])
-        await callback.message.answer(
-            "<b>Чтобы получить адрес для смены региона, жмите кнопку ниже 👇</b>",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="Получить адрес",
-                        callback_data="asfaq_adress",
-                        style="success",
-
-                    )
-                   ]
-                ]
-            ),
-            parse_mode="HTML",
-        )
+        await send_region_faq(callback.message)
         await callback.answer()
     elif option == "adress":
         a=await run_sheet(sheets.get_address)
@@ -82,12 +102,6 @@ async def send_as_faq(callback: CallbackQuery):
               'Ваш 2PAY🩶</code>')
         await callback.message.answer(text, parse_mode="html")
         await callback.answer()
-    elif option == "imstupid":
-        caption= ('Это самое волнительное — менять что-то в своём iPhone. Но бояться нечего: ваш аккаунт остаётся вашим, ничего не потеряется, а мы рядом на каждом шаге ❤️\n\n'
-
-                '👩 Остались вопросы — менеджер Анна → @manager_2pay\n'
-                '🤖 Сменить регион и пополнить App Store → @official_2paybot\n')
-        items = [{"path": FAQ_IMSTUPID[0], "kind": "photo", "caption": caption, "parse_mode": "HTML"}]
-        items += [{"path": p, "kind": "photo"} for p in FAQ_IMSTUPID[1:]]
-        await send_cached_media_group(callback.message, items)
+    elif option == "questions":
+        await send_questions_faq(callback.message)
         await callback.answer()

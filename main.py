@@ -29,7 +29,7 @@ from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
 from services.scheduler import start_scheduler
 from services.yookassa_webhook import start_webhook_server
-from commands import announce, allusers
+from commands import announce, allusers, menulink
 
 def _make_session() -> AiohttpSession:
     """
@@ -132,6 +132,7 @@ async def main():
     dp.include_router(announce.router)
     dp.include_router(referal_menu.rt)
     dp.include_router(allusers.rt)
+    dp.include_router(menulink.router)
     mailer = Mailer(bot, logger)
     await mailer.start()
 
