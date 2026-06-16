@@ -1,14 +1,20 @@
 import asyncio
 import os
 import socket
+import requests.sessions
 
-# gspread ходит в Google Sheets синхронно и БЕЗ таймаута → при сбое/недоступности
-# Sheets запрос виснет НАВСЕГДА, намертво занимает поток пула run_sheet, и каскадно
-# подвешивает бота: process_referral_reward держит при этом коннект БД → пул asyncpg
-# исчерпывается → UserMiddleware виснет на каждом апдейте → встают и кнопки, и вебхуки
-# (ключи/уведомления). Глобальный socket-таймаут заставляет такие блокирующие запросы
-# падать через 20с, а не висеть. async-сокеты (asyncpg, aiohttp) неблокирующие — их это не трогает.
+# gspread и yookassa SDK ходят по сети через requests, по умолчанию БЕЗ таймаута → при
+# сбое/недоступности Google Sheets запрос виснет НАВСЕГДА: поток пула run_sheet застревает,
+# а все хендлеры, ждущие его, копятся (tasks растут до сотен) — это и есть «залип через 7-8ч».
+# socket.setdefaulttimeout закрывает только connect-фазу и не всегда бьёт по read у requests,
+# поэтому вешаем ЯВНЫЙ таймаут на КАЖДЫЙ requests-вызов — теперь он физически не зависнет.
 socket.setdefaulttimeout(20)
+
+_orig_requests_request = requests.sessions.Session.request
+def _requests_request_with_timeout(self, *args, **kwargs):
+    kwargs.setdefault("timeout", 20)
+    return _orig_requests_request(self, *args, **kwargs)
+requests.sessions.Session.request = _requests_request_with_timeout
 
 from contextlib import suppress
 from aiogram import Bot, Dispatcher
@@ -70,20 +76,34 @@ async def _watchdog():
                 fds = -1
             msg = f"[watchdog] db_pool size={size} idle={idle} | tasks={tasks} | fds={fds}"
 
-            # «застряли»: пул создан, но свободных коннектов нет (кто-то их держит)
-            bad = (size > 0 and idle == 0)
+            # «застряли»: хендлеры копятся (висят на await, не завершаются). Норма tasks ~ 8-20.
+            # Доп.признак — пул создан, но все коннекты заняты.
+            bad = tasks > 80 or (size > 0 and idle == 0)
             stuck = stuck + 1 if bad else 0
 
-            if bad or tasks > 200 or (fds != -1 and fds > 800):
-                logger.warning(msg + f"  <-- ВОЗМОЖНОЕ ИСЧЕРПАНИЕ РЕСУРСА (stuck={stuck}мин)")
+            if bad or (fds != -1 and fds > 800):
+                logger.warning(msg + f"  <-- ЗАЛИПАНИЕ? (stuck={stuck}мин)")
+                # дамп: на каком await копятся задачи (видно виновника — run_sheet/send_message/acquire)
+                if tasks > 80:
+                    shown = 0
+                    for t in asyncio.all_tasks():
+                        if t is asyncio.current_task():
+                            continue
+                        st = t.get_stack(limit=4)
+                        if st:
+                            f = st[-1]
+                            logger.warning(f"[watchdog] зависшая задача @ "
+                                           f"{f.f_code.co_filename}:{f.f_lineno} ({f.f_code.co_name})")
+                            shown += 1
+                            if shown >= 6:
+                                break
             else:
                 logger.info(msg)
 
-            # самолечение: пул пуст 5 минут подряд = бот завис и сам не выйдет.
-            # Логируем состояние (для диагностики) и жёстко выходим → systemd
-            # перезапустит (Restart=always). Не ждём часами, пока заметят.
+            # самолечение: «плохо» 5 минут подряд = бот завис и сам не выйдет.
+            # Жёстко выходим → systemd перезапустит (Restart=always). Не ждём часами.
             if stuck >= 5:
-                logger.critical(f"[watchdog] пул БД пуст 5 мин подряд — БОТ ЗАВИС, перезапуск. {msg}")
+                logger.critical(f"[watchdog] ЗАЛИПАНИЕ 5 мин подряд — перезапуск. {msg}")
                 os._exit(1)
         except Exception:
             logger.exception("[watchdog] error")
