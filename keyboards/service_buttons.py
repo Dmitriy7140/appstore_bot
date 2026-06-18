@@ -5,6 +5,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 def service_keyboard(service):
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🎉 РОЗЫГРЫШ",
+                                  url="https://t.me/gift_2pay_bot?start=from2pay")],
             [InlineKeyboardButton(text="🆓 Сменить регион БЕСПЛАТНО",
                                   callback_data="asfaq_region")],
             [InlineKeyboardButton(text="💰 Пополнить Apple ID",
