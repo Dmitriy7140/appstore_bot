@@ -203,6 +203,7 @@ async def _handle(request: web.Request) -> web.Response:
             tx_id=payment_id,
             amount=amount_rub,
             code=key,
+            source=meta.get("source"),
         )
         logger.info(f"Платёж {payment_id} обработан, ключ выдан юзеру {user_id}")
     except Exception as e:

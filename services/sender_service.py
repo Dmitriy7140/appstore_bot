@@ -32,13 +32,17 @@ async def lazy_send_photo(callback, service: str, keyboard:InlineKeyboardMarkup)
         reply_markup=keyboard,
     )
 
-async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, code:str):
+async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, code:str, source:str | None = None):
     await add_transaction(bot, telegram_id, tx_id, amount)
 
     # 2. отправляем уведомление админу
     user_link = f"tg://user?id={telegram_id}"
 
+    # платежи Магазина кодов (metadata.source == "ps_store") помечаем отдельно
+    badge = "🟦Магазин кодов\n\n" if source == "ps_store" else ""
+
     text = (
+        f"{badge}"
         f"💰 Новая {"тестовая " if TEST_MODE else ""}транзакция!\n\n"
         f"👤 <a href='{user_link}'>Пользователь: {telegram_id}</a>\n\n"
         f"🆔 ID Транзакции: <tg-spoiler>{tx_id}</tg-spoiler>\n\n"
