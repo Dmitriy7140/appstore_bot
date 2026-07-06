@@ -195,7 +195,8 @@ async def _handle(request: web.Request) -> web.Response:
             f"✅ Оплата прошла!\n\n<code>{key}</code>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✍️ Пройти опрос и получить 50 ₺", callback_data="survey/start")],
+                # ВРЕМЕННО скрыто — опрос допилим позже (логику отзывов доделаем)
+                # [InlineKeyboardButton(text="✍️ Пройти опрос и получить 50 ₺", callback_data="survey/start")],
                 [InlineKeyboardButton(text="Как активировать код?", callback_data="asfaq_code")],
                 [InlineKeyboardButton(text="Как поменять регион?", callback_data="asfaq_region")],
             ]),
