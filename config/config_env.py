@@ -21,6 +21,7 @@ if TEST_MODE:
     WEBHOOK_PORT = int(getenv("WEBHOOK_PORT", "8080"))
     WEBHOOK_PATH = getenv("WEBHOOK_PATH", "/yookassa/webhook")
     YOOKASSA_ALLOWED_IPS = getenv("YOOKASSA_ALLOWED_IPS", "")
+    SURVEY_CHAT_ID = int(getenv("SURVEY_CHAT_ID", "-1003922981460"))
     MANAGER_WEBHOOK_URL = getenv("MANAGER_WEBHOOK_URL", "")
 else:
     MANAGER_WEBHOOK_URL = getenv("MANAGER_WEBHOOK_URL", "")
@@ -38,3 +39,4 @@ else:
     WEBHOOK_PORT = int(getenv("WEBHOOK_PORT", "8080"))
     WEBHOOK_PATH = getenv("WEBHOOK_PATH", "/yookassa/webhook")
     YOOKASSA_ALLOWED_IPS = getenv("YOOKASSA_ALLOWED_IPS", "")
+    SURVEY_CHAT_ID = int(getenv("SURVEY_CHAT_ID", "-1003922981460"))

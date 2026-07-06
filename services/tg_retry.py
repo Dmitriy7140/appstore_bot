@@ -1,9 +1,35 @@
 import asyncio
 
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 
 from config.utils import logger
+
+
+async def send_flood_safe(factory, *, attempts: int = 5, cap: float = 30.0):
+    """
+    Выполнить вызов к Telegram, переживая флуд-контроль (429 TelegramRetryAfter).
+
+    Нужно для ТРАНЗАКЦИОННЫХ сообщений (выдача кода, уведомление о транзакции):
+    во время массовой рассылки лимит бота (~30/с) исчерпан, и обычный send_message
+    падает с 429 → код не доходит до покупателя. Здесь мы ждём указанный Telegram
+    интервал и повторяем, чтобы продажа всё равно закрылась.
+
+    factory() должна создавать СВЕЖУЮ корутину на каждую попытку
+    (например: lambda: bot.send_message(...)).
+    """
+    for attempt in range(attempts):
+        try:
+            return await factory()
+        except TelegramRetryAfter as e:
+            if attempt == attempts - 1:
+                raise
+            delay = min(e.retry_after, cap) + 0.5
+            logger.warning(
+                f"429 flood control: ждём {delay:.1f}s и повторяем "
+                f"(попытка {attempt + 1}/{attempts})"
+            )
+            await asyncio.sleep(delay)
 
 
 class RetryRequestMiddleware(BaseRequestMiddleware):

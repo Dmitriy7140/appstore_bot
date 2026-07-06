@@ -6,6 +6,7 @@ from config.config_env import ADMIN_CHAT_ID, TEST_MODE
 
 from repository.database.database import add_transaction
 from services.media_cache import send_cached_photo
+from services.tg_retry import send_flood_safe
 
 
 
@@ -50,5 +51,5 @@ async def send_transaction_notice(bot, telegram_id:int, tx_id:str, amount:int, c
         f"💵 Сумма: {amount} RUB"
     )
 
-    await bot.send_message(ADMIN_CHAT_ID, text, parse_mode="html")
+    await send_flood_safe(lambda: bot.send_message(ADMIN_CHAT_ID, text, parse_mode="html"))
 

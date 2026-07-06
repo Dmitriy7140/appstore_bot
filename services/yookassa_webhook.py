@@ -25,6 +25,7 @@ from config.config_env import (
 from repository.sheets.sheets import sheets, run_sheet
 from services.payments import REV_RATES
 from services.sender_service import send_transaction_notice
+from services.tg_retry import send_flood_safe
 from repository.database.database import claim_payment, release_payment
 
 
@@ -187,15 +188,18 @@ async def _handle(request: web.Request) -> web.Response:
     try:
         await run_sheet(sheets.add_used, REV_RATES[amount_rub], user_id, key)
 
-        await bot.send_message(
+        # flood-safe: во время массовой рассылки лимит бота исчерпан и обычный
+        # send_message упал бы с 429 → покупатель остался бы без кода. Ждём и повторяем.
+        await send_flood_safe(lambda: bot.send_message(
             chat_id,
             f"✅ Оплата прошла!\n\n<code>{key}</code>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✍️ Пройти опрос и получить 50 ₺", callback_data="survey/start")],
                 [InlineKeyboardButton(text="Как активировать код?", callback_data="asfaq_code")],
                 [InlineKeyboardButton(text="Как поменять регион?", callback_data="asfaq_region")],
             ]),
-        )
+        ))
 
         await send_transaction_notice(
             bot,

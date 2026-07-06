@@ -1,6 +1,7 @@
 from aiogram.types import Message
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 import asyncio
+import time
 from asyncio import Queue
 from contextlib import suppress
 from aiogram import Bot
@@ -8,7 +9,7 @@ from aiogram import Bot
 
 
 class Mailer:
-    def __init__(self, bot: Bot, logger, workers: int = 3):
+    def __init__(self, bot: Bot, logger, workers: int = 3, rate: float = 20.0):
         self.bot = bot
         self.logger = logger
         self.workers = workers
@@ -18,20 +19,39 @@ class Mailer:
         self.success = 0
         self.failed = 0
 
+        # Глобальный троттл на ВСЕ воркеры: не больше `rate` сообщений/с суммарно.
+        # У Telegram лимит ~30/с на бота; держим рассылку ниже (20/с), чтобы всегда
+        # оставался запас для транзакционных сообщений (выдача кода) — иначе массовая
+        # рассылка выедала весь бюджет и продажи падали с 429.
+        self._min_interval = 1.0 / rate
+        self._rate_lock = asyncio.Lock()
+        self._next_slot = 0.0
+
+    async def _throttle(self):
+        """Разносит отправки во времени так, чтобы суммарный темп не превышал rate."""
+        async with self._rate_lock:
+            now = time.monotonic()
+            wait = self._next_slot - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+                now = time.monotonic()
+            self._next_slot = max(now, self._next_slot) + self._min_interval
+
     async def worker(self):
         while True:
             telegram_id, msg = await self.queue.get()
             try:
+                await self._throttle()
                 await self.bot.copy_message(
                     chat_id=telegram_id,
                     from_chat_id=msg.chat.id,
                     message_id=msg.message_id
                 )
                 self.success += 1
-                await asyncio.sleep(0.05)
 
             except TelegramRetryAfter as e:
-                await asyncio.sleep(e.retry_after)
+                # даже с троттлом прилетел флуд-контроль — ждём и возвращаем в очередь
+                await asyncio.sleep(e.retry_after + 0.5)
                 await self.queue.put((telegram_id, msg))
 
             except TelegramForbiddenError:

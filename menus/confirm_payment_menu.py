@@ -1,9 +1,31 @@
 from aiogram import Router
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
 from services.payments import create_payment, RATES
+from config.utils import IsAdmin
 
 rt = Router()
+
+
+# -------------------------
+# ВРЕМЕННО: тестовая покупка кода на 10₺ за 16₽ (лист "10").
+# Только для админа, чтобы обычные юзеры не увидели дешёвый номинал.
+# Удалить после теста вместе с записями 10/16 в RATES/REV_RATES/ALL_SHEETS.
+# -------------------------
+@rt.message(Command("test10"), IsAdmin())
+async def test_buy_10(message: Message):
+    payment_url, _payment_id = await create_payment(
+        10,
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+    )
+    await message.answer(
+        "🧪 Тест: код на 10₺ за 16₽\n\nСсылка для оплаты 👇",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Оплатить 16₽", url=payment_url)],
+        ]),
+    )
 
 
 # -------------------------

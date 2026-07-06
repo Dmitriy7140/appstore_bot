@@ -1,5 +1,6 @@
 from aiogram import Router
 from aiogram.filters import CommandStart, CommandObject
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 from keyboards.service_buttons import service_keyboard
@@ -14,7 +15,9 @@ MAIN_MENU_PHOTO = "static/menus/as.png"
 rt = Router()
 
 @rt.message(CommandStart())
-async def start(message: Message, command:CommandObject):
+async def start(message: Message, command:CommandObject, state: FSMContext):
+    # /start — чистый выход из любого незавершённого FSM-флоу (напр. опроса)
+    await state.clear()
     payload = command.args
     if payload:
         # Составной payload "<меню>__<источник>": до "__" — ключ меню (callback_data),

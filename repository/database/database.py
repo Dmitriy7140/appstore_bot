@@ -84,7 +84,45 @@ async def init_db():
                 updated_at TIMESTAMP NOT NULL DEFAULT now()
             )
         """)
+        # опрос 2PAY: наличие строки = юзер прошёл опрос и получил (или ему причитается)
+        # бонус. PRIMARY KEY на user_id даёт защиту «1 бонус на 1 user_id».
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS survey_bonus (
+                user_id BIGINT PRIMARY KEY,
+                completed_at TIMESTAMP NOT NULL DEFAULT now()
+            )
+        """)
     logger.info("Подключились к бд!")
+
+
+# -------------------------
+# ОПРОС 2PAY (бонус за прохождение)
+# -------------------------
+async def has_completed_survey(user_id: int) -> bool:
+    """Проходил ли юзер опрос (мягкая проверка для UX перед стартом)."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchval(
+            "SELECT 1 FROM survey_bonus WHERE user_id = $1", user_id
+        )
+    return row is not None
+
+
+async def claim_survey_bonus(user_id: int) -> bool:
+    """
+    Атомарно «застолбить» бонус за опрос.
+    True  — застолбили первыми, бонус нужно выдать.
+    False — юзер уже получал бонус, повторно не выдаём.
+    """
+    p = get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("""
+            INSERT INTO survey_bonus (user_id)
+            VALUES ($1)
+            ON CONFLICT (user_id) DO NOTHING
+            RETURNING user_id
+        """, user_id)
+    return row is not None
 
 
 # -------------------------
@@ -310,11 +348,20 @@ async def process_referral_reward(telegram_id: int):
     # ← соединение с БД ОСВОБОЖДЕНО здесь
 
     # 2. ключ берём ВНЕ соединения с БД: gspread не должен держать коннект из пула —
-    #    зависший Sheets иначе исчерпает пул asyncpg и подвесит весь бот
-    key = await run_sheet(sheets.get_key, 300)
+    #    зависший Sheets иначе исчерпает пул asyncpg и подвесит весь бот.
+    #    400 → лист "100" (награда «ключ на 100 лир»); номинала 300 в ALL_SHEETS нет.
+    key = await run_sheet(sheets.get_key, 400)
 
     if not key:
-        logger.error("Нет ключей для выдачи!")
+        logger.error("Нет ключей для выдачи реф-награды!")
+        # ключ не получен — снимаем «застолблённость», чтобы следующая оплата
+        # этого же реферала попробовала выдать награду снова (иначе реферал сгорит)
+        async with p.acquire() as conn:
+            await conn.execute("""
+                UPDATE referrals
+                SET activated = FALSE
+                WHERE user_id = $1
+            """, telegram_id)
         return None
 
     # 3. фиксируем выдачу отдельной короткой транзакцией
@@ -340,9 +387,10 @@ async def send_referral_reward(bot, inviter_id: int, key: str):
         await bot.send_message(
             ADMIN_CHAT_ID,
             text=(
-            f"🎁 Бонус за реферала!\n\n"
-            f"👤 Получатель: <a href='{user_link}'>{inviter_id}</a>\n\n",
-            f"🔑 Код: <tg-spoiler>{key}</tg-spoiler>"),
+                f"🎁 Бонус за реферала!\n\n"
+                f"👤 Получатель: <a href='{user_link}'>{inviter_id}</a>\n\n"
+                f"🔑 Код: <tg-spoiler>{key}</tg-spoiler>"
+            ),
             parse_mode="HTML"
         )
     except Exception as e:
