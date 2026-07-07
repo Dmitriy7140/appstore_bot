@@ -92,7 +92,34 @@ async def init_db():
                 completed_at TIMESTAMP NOT NULL DEFAULT now()
             )
         """)
+        # флаги-тумблеры бота (например "broke" — режим поломки)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS bot_flags (
+                key TEXT PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """)
     logger.info("Подключились к бд!")
+
+
+# -------------------------
+# ФЛАГИ-ТУМБЛЕРЫ БОТА
+# -------------------------
+async def get_flag(key: str) -> bool:
+    p = get_pool()
+    async with p.acquire() as conn:
+        val = await conn.fetchval("SELECT enabled FROM bot_flags WHERE key = $1", key)
+    return bool(val)
+
+
+async def set_flag(key: str, enabled: bool):
+    p = get_pool()
+    async with p.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO bot_flags (key, enabled)
+            VALUES ($1, $2)
+            ON CONFLICT (key) DO UPDATE SET enabled = EXCLUDED.enabled
+        """, key, enabled)
 
 
 # -------------------------

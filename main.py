@@ -29,7 +29,8 @@ from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
 from services.scheduler import start_scheduler
 from services.yookassa_webhook import start_webhook_server
-from commands import announce, allusers, menulink
+from services.maintenance import MaintenanceMiddleware, load_broke
+from commands import announce, allusers, menulink, maintenance
 
 def _make_session() -> AiohttpSession:
     """
@@ -113,6 +114,7 @@ async def _watchdog():
 async def main():
 
     await database.init_db()
+    await load_broke()   # восстановить состояние режима поломки после рестарта
 
     anal_sheets = AnalSheets()
     anal_task = asyncio.create_task(anal_loop(anal_sheets))
@@ -122,6 +124,9 @@ async def main():
 
     dp.message.middleware(database.UserMiddleware())
     dp.callback_query.middleware(database.UserMiddleware())
+
+    # режим поломки: перехватывает все нажатия кнопок раньше остальных хендлеров
+    dp.callback_query.outer_middleware(MaintenanceMiddleware())
 
     dp.include_router(start.rt)
     dp.include_router(service_menu.rt)
@@ -134,6 +139,7 @@ async def main():
     dp.include_router(referal_menu.rt)
     dp.include_router(allusers.rt)
     dp.include_router(menulink.router)
+    dp.include_router(maintenance.router)
     mailer = Mailer(bot, logger)
     await mailer.start()
 
