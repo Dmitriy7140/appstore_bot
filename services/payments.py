@@ -59,7 +59,7 @@ async def create_payment(amount: int, chat_id, user_id) -> tuple:
         },
         "receipt" : {
             "customer": {
-                "email": "support2pay@gmail.com"
+                "email": "mail.skillschool@gmail.com"
             },
             "items": [{
                 "description": "Цифровой информационный материал",
