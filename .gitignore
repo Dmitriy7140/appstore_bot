@@ -1,3 +1,11 @@
 .idea
 .env
 /repository/sheets/creds.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Логи
+*.log

@@ -2,7 +2,8 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 
-from services.payments import create_payment, RATES
+from services.payment_provider import create_payment
+from services.rates import RATES
 from config.utils import IsAdmin
 
 rt = Router()
@@ -32,8 +33,9 @@ async def test_buy_10(message: Message):
 # CALLBACK
 # -------------------------
 # Создаём платёж и отдаём ссылку. Подтверждение оплаты и выдача ключа
-# происходят асинхронно в webhook'е ЮKassa (services/yookassa_webhook.py).
-# chat_id/user_id уезжают в metadata платежа и возвращаются в уведомлении.
+# происходят асинхронно в callback'е активной кассы (см. services/payment_provider.py;
+# по умолчанию Альфа-Банк — services/alfabank_webhook.py).
+# Контекст (chat_id/user_id/номинал) сохраняется на стороне бота и поднимается по заказу.
 @rt.callback_query(lambda c: c.data.startswith("pay/"))
 async def process_payment(callback: CallbackQuery):
 

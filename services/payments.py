@@ -5,40 +5,16 @@ from yookassa import Configuration, Payment
 from config.config_env import SHOP_ID, SECRET_KEY, BOT_URL
 from config.utils import logger
 
+# Номиналы вынесены в общий модуль (их же использует касса Альфа-Банка).
+# Реэкспортируем для обратной совместимости со старыми импортами.
+from services.rates import RATES, REV_RATES, SERVICE_NAMES  # noqa: F401
 
-RATES = {1: 1,
-         10: 16.00,      # ТЕСТ: 10₺ за 16₽ (команда /test10, только админ)
-         100: 400.00,
-         250: 950.00,
-         500: 1750.00,
-         1000: 3500.00,
-         1250: 4250.00,
-         1500: 5100.00,
-         1750: 5600.00,
-         2000: 6400.00,
-         }
-REV_RATES = {
-
-    16: 10,       # ТЕСТ: 16₽ → 10₺ (лист "10")
-    400: 100,
-    950: 250,
-    1750: 500,
-    3500: 1000,
-    4250: 1250,
-    5100: 1500,
-    5600: 1750,
-    6400: 2000,
-}
-SERVICE_NAMES = {
-    "as": "AppStore",
-    "gp": "Googleplay",
-    "ps": "Playstation",
-    "st": "Steam",
-    "xb": "Xbox"
-}
-
-Configuration.account_id = SHOP_ID
-Configuration.secret_key = SECRET_KEY
+# ⚠️ ЮKassa переведена в спящий режим — бот по умолчанию работает через Альфа-Банк
+# (см. services/alfabank.py и PAYMENT_PROVIDER). Модуль оставлен «про запас»:
+# конфигурируем SDK только если ключи заданы, чтобы импорт был безопасным.
+if SHOP_ID and SECRET_KEY:
+    Configuration.account_id = SHOP_ID
+    Configuration.secret_key = SECRET_KEY
 
 
 async def create_payment(amount: int, chat_id, user_id) -> tuple:

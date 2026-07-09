@@ -1,7 +1,7 @@
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram import Router
-from services.payments import  RATES
+from services.rates import RATES
 from repository.sheets.sheets import sheets, run_sheet
 
 rt = Router()

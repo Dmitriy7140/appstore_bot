@@ -1,5 +1,6 @@
 yookassa
 aiogram
+aiohttp
 python-dotenv
 asyncio
 gspread

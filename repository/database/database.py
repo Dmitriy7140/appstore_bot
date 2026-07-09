@@ -99,7 +99,68 @@ async def init_db():
                 enabled BOOLEAN NOT NULL DEFAULT FALSE
             )
         """)
+        # Заказы Альфа-Банка: callback шлюза приходит GET-запросом и НЕ несёт
+        # наши метаданные (кому выдать ключ) — только orderNumber/mdOrder. Поэтому
+        # при регистрации платежа складываем сюда контекст, а в вебхуке достаём его
+        # по order_number. nominal — номинал в лирах (аргумент create_payment),
+        # amount_kopecks — сумма к оплате в копейках (для сверки с ответом шлюза).
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS alfa_orders (
+                order_number TEXT PRIMARY KEY,
+                user_id      BIGINT NOT NULL,
+                chat_id      BIGINT NOT NULL,
+                nominal      INTEGER NOT NULL,
+                amount_kopecks INTEGER NOT NULL,
+                md_order     TEXT,
+                source       TEXT,
+                created_at   TIMESTAMP NOT NULL DEFAULT now()
+            )
+        """)
     logger.info("Подключились к бд!")
+
+
+# -------------------------
+# ЗАКАЗЫ АЛЬФА-БАНКА (контекст платежа для callback-уведомлений)
+# -------------------------
+async def create_alfa_order(
+    order_number: str,
+    user_id: int,
+    chat_id: int,
+    nominal: int,
+    amount_kopecks: int,
+    source: str | None = None,
+):
+    """Сохранить контекст заказа перед редиректом на платёжную форму Альфы."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO alfa_orders
+                (order_number, user_id, chat_id, nominal, amount_kopecks, source)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (order_number) DO NOTHING
+        """, order_number, user_id, chat_id, nominal, amount_kopecks, source)
+
+
+async def get_alfa_order(order_number: str):
+    """Вернуть контекст заказа по order_number (или None, если не наш заказ)."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT order_number, user_id, chat_id, nominal, amount_kopecks,
+                   md_order, source
+            FROM alfa_orders
+            WHERE order_number = $1
+        """, order_number)
+    return dict(row) if row else None
+
+
+async def attach_alfa_md_order(order_number: str, md_order: str):
+    """Проставить mdOrder (id заказа в шлюзе) — приходит в первом callback."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        await conn.execute("""
+            UPDATE alfa_orders SET md_order = $2 WHERE order_number = $1
+        """, order_number, md_order)
 
 
 # -------------------------

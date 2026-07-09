@@ -134,8 +134,12 @@ async def _handle(request: web.Request) -> web.Response:
     if not payment_id:
         return web.Response(status=400)
 
+    # ДИАГНОСТИКА (можно убрать после переезда): какое событие/статус реально шлёт магазин
+    logger.info(f"Webhook: event={event}, status={obj.get('status')}, payment_id={payment_id}")
+
     # реагируем только на успешную оплату; canceled/waiting/refund просто квитируем
     if event != "payment.succeeded":
+        logger.info(f"Webhook: пропускаем событие {event} (не payment.succeeded), платёж {payment_id}")
         return web.Response(status=200)
 
     meta = obj.get("metadata") or {}

@@ -28,7 +28,7 @@ from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
 from services.scheduler import start_scheduler
-from services.yookassa_webhook import start_webhook_server
+from services.payment_provider import start_webhook_server
 from services.maintenance import MaintenanceMiddleware, load_broke
 from commands import announce, allusers, menulink, maintenance
 
@@ -150,7 +150,7 @@ async def main():
 
     # 3. запуск
 
-    # HTTP-сервер для уведомлений ЮKassa (подтверждение оплат)
+    # HTTP-сервер для callback-уведомлений активной кассы (по умолчанию Альфа-Банк)
     webhook_runner = await start_webhook_server(bot)
 
     # апдейты Telegram по-прежнему забираем поллингом
@@ -165,7 +165,7 @@ async def main():
         # systemctl stop/restart были мгновенными (а не ждали SIGKILL по таймауту).
         logger.info("Останавливаемся — гасим фоновые задачи и ресурсы...")
 
-        # 1. перестаём принимать вебхуки ЮKassa
+        # 1. перестаём принимать callback-уведомления кассы
         with suppress(Exception):
             await webhook_runner.cleanup()
 
