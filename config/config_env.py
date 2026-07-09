@@ -45,8 +45,32 @@ else:
 # =========================================================================
 # ВЫБОР КАССЫ И НАСТРОЙКИ АЛЬФА-БАНКА (провайдер-независимо от TEST_MODE)
 # =========================================================================
-# Какая касса активна: "alfa" (по умолчанию) или "yookassa" (спящий режим).
-PAYMENT_PROVIDER = getenv("PAYMENT_PROVIDER", "alfa").strip().lower()
+# Какая касса активна: "robokassa" (по умолчанию), "alfa" или "yookassa" (спящий режим).
+PAYMENT_PROVIDER = getenv("PAYMENT_PROVIDER", "robokassa").strip().lower()
+
+# =========================================================================
+# ROBOKASSA (агрегатор — активная касса)
+# =========================================================================
+ROBOKASSA_MERCHANT_LOGIN = getenv("ROBOKASSA_MERCHANT_LOGIN", "")
+ROBOKASSA_PASSWORD1 = getenv("ROBOKASSA_PASSWORD1", "")   # подпись создания платежа
+ROBOKASSA_PASSWORD2 = getenv("ROBOKASSA_PASSWORD2", "")   # проверка подписи ResultURL
+# Алгоритм хеша подписи — ДОЛЖЕН совпадать с настройкой в ЛК Робокассы.
+ROBOKASSA_HASH_ALGO = getenv("ROBOKASSA_HASH_ALGO", "md5").strip().lower()
+# Тестовый режим: IsTest=1 (и пароли берём ТЕСТОВЫЕ из ЛК).
+ROBOKASSA_IS_TEST = getenv("ROBOKASSA_IS_TEST", "False") == "True"
+ROBOKASSA_PAYMENT_URL = getenv(
+    "ROBOKASSA_PAYMENT_URL", "https://auth.robokassa.ru/Merchant/Index.aspx"
+)
+# Путь ResultURL (этот URL прописывается в ЛК Робокассы; за nginx+HTTPS).
+ROBOKASSA_RESULT_PATH = getenv("ROBOKASSA_RESULT_PATH", "/robokassa/result")
+ROBOKASSA_CULTURE = getenv("ROBOKASSA_CULTURE", "ru")
+
+# --- Фискализация (54-ФЗ) через Робокассу. Если в ЛК включена фискализация,
+# Receipt ОБЯЗАТЕЛЕН, иначе оплата отклоняется. Схему/ставку сверьте с ЛК. ---
+ROBOKASSA_FISCAL = getenv("ROBOKASSA_FISCAL", "False") == "True"
+ROBOKASSA_TAX = getenv("ROBOKASSA_TAX", "none")                # none/vat0/vat10/vat20/…
+ROBOKASSA_PAYMENT_METHOD = getenv("ROBOKASSA_PAYMENT_METHOD", "full_payment")
+ROBOKASSA_PAYMENT_OBJECT = getenv("ROBOKASSA_PAYMENT_OBJECT", "service")
 
 # База REST API «Платёжного шлюза» Альфы (оканчивается на /payment/rest/):
 #   боевой:   https://pay.alfabank.ru/payment/rest/

@@ -116,7 +116,54 @@ async def init_db():
                 created_at   TIMESTAMP NOT NULL DEFAULT now()
             )
         """)
+        # Заказы Robokassa: InvId должен быть уникальным целым числом — берём его
+        # из SERIAL. При регистрации платежа складываем контекст (кому выдать ключ),
+        # в ResultURL достаём по InvId. amount_rub — сумма к оплате в рублях.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS robokassa_orders (
+                invoice_id  SERIAL PRIMARY KEY,
+                user_id     BIGINT NOT NULL,
+                chat_id     BIGINT NOT NULL,
+                nominal     INTEGER NOT NULL,
+                amount_rub  INTEGER NOT NULL,
+                source      TEXT,
+                created_at  TIMESTAMP NOT NULL DEFAULT now()
+            )
+        """)
     logger.info("Подключились к бд!")
+
+
+# -------------------------
+# ЗАКАЗЫ ROBOKASSA (контекст платежа для ResultURL)
+# -------------------------
+async def create_robokassa_order(
+    user_id: int,
+    chat_id: int,
+    nominal: int,
+    amount_rub: int,
+    source: str | None = None,
+) -> int:
+    """Создать заказ и вернуть его invoice_id (это и есть InvId для Robokassa)."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        inv_id = await conn.fetchval("""
+            INSERT INTO robokassa_orders (user_id, chat_id, nominal, amount_rub, source)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING invoice_id
+        """, int(user_id), int(chat_id), nominal, amount_rub, source)
+    return int(inv_id)
+
+
+async def get_robokassa_order(invoice_id: int):
+    """Вернуть контекст заказа по InvId (или None)."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT invoice_id, user_id, chat_id, nominal, amount_rub, source
+            FROM robokassa_orders
+            WHERE invoice_id = $1
+        """, invoice_id)
+    return dict(row) if row else None
 
 
 # -------------------------
