@@ -12,7 +12,7 @@ rt = Router()
 # -------------------------
 # ВРЕМЕННО: тестовая покупка кода на 10₺ за 16₽ (лист "10").
 # Только для админа, чтобы обычные юзеры не увидели дешёвый номинал.
-# Удалить после теста вместе с записями 10/16 в RATES/REV_RATES/ALL_SHEETS.
+# Удалить после теста вместе с записями 10/1 в RATES/REV_RATES/ALL_SHEETS.
 # -------------------------
 @rt.message(Command("test10"), IsAdmin())
 async def test_buy_10(message: Message):
@@ -22,9 +22,9 @@ async def test_buy_10(message: Message):
         user_id=message.from_user.id,
     )
     await message.answer(
-        "🧪 Тест: код на 10₺ за 16₽\n\nСсылка для оплаты 👇",
+        "🧪 Тест: код на 10₺ за 1₽\n\nСсылка для оплаты 👇",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 Оплатить 16₽", url=payment_url)],
+            [InlineKeyboardButton(text="💳 Оплатить 1₽", url=payment_url)],
         ]),
     )
 
