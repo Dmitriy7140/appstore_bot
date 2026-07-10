@@ -27,6 +27,7 @@ from config.config_env import (
     ROBOKASSA_MERCHANT_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_HASH_ALGO,
     ROBOKASSA_IS_TEST, ROBOKASSA_PAYMENT_URL, ROBOKASSA_CULTURE,
     ROBOKASSA_FISCAL, ROBOKASSA_TAX, ROBOKASSA_PAYMENT_METHOD, ROBOKASSA_PAYMENT_OBJECT,
+    ROBOKASSA_SNO, ROBOKASSA_EMAIL,
 )
 from services.rates import RATES
 from repository.database.database import create_robokassa_order
@@ -63,20 +64,22 @@ def _format_sum(amount_rub: int) -> str:
 
 def _build_receipt(amount_rub: int) -> str:
     """
-    Фискальный чек (54-ФЗ) для параметра Receipt (URL-encoded JSON).
+    Фискальный чек (54-ФЗ) для параметра Receipt — компактный JSON.
     ⚠️ Нужен, только если в ЛК Robokassa включена фискализация (ROBOKASSA_FISCAL).
+    Компактные separators (без пробелов) убирают неоднозначность url-encode: одна и
+    та же строка идёт в подпись и в URL. sno добавляем, только если задан в env
+    (иначе используется система налогообложения по умолчанию из ЛК).
     """
-    receipt = {
-        "items": [{
-            "name": "Цифровой информационный материал",
-            "quantity": 1,
-            "sum": float(amount_rub),
-            "payment_method": ROBOKASSA_PAYMENT_METHOD,
-            "payment_object": ROBOKASSA_PAYMENT_OBJECT,
-            "tax": ROBOKASSA_TAX,
-        }]
+    item = {
+        "name": "Цифровой информационный материал",
+        "quantity": 1,
+        "sum": round(float(amount_rub), 2),
+        "payment_method": ROBOKASSA_PAYMENT_METHOD,
+        "payment_object": ROBOKASSA_PAYMENT_OBJECT,
+        "tax": ROBOKASSA_TAX,
     }
-    return json.dumps(receipt, ensure_ascii=False)
+    receipt = {"sno": ROBOKASSA_SNO, "items": [item]} if ROBOKASSA_SNO else {"items": [item]}
+    return json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
 
 
 async def create_payment(amount: int, chat_id, user_id, source: str | None = None) -> tuple:
@@ -126,6 +129,10 @@ async def create_payment(amount: int, chat_id, user_id, source: str | None = Non
     }
     if ROBOKASSA_IS_TEST:
         params["IsTest"] = "1"
+    # Email получателя чека (в подпись НЕ входит). Если не задан — Robokassa
+    # спросит адрес у клиента на форме оплаты.
+    if ROBOKASSA_EMAIL:
+        params["Email"] = ROBOKASSA_EMAIL
 
     query = "&".join(
         f"{k}={urllib.parse.quote(str(v), safe='')}" for k, v in params.items()

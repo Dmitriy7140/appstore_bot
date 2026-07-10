@@ -71,6 +71,11 @@ ROBOKASSA_FISCAL = getenv("ROBOKASSA_FISCAL", "False") == "True"
 ROBOKASSA_TAX = getenv("ROBOKASSA_TAX", "none")                # none/vat0/vat10/vat20/…
 ROBOKASSA_PAYMENT_METHOD = getenv("ROBOKASSA_PAYMENT_METHOD", "full_payment")
 ROBOKASSA_PAYMENT_OBJECT = getenv("ROBOKASSA_PAYMENT_OBJECT", "service")
+# Система налогообложения для чека: osn / usn_income / usn_income_outcome / envd /
+# esn / patent. Пусто — берётся значение по умолчанию из ЛК Robokassa.
+ROBOKASSA_SNO = getenv("ROBOKASSA_SNO", "")
+# Email получателя чека (в подпись не входит). Пусто — Robokassa спросит на форме.
+ROBOKASSA_EMAIL = getenv("ROBOKASSA_EMAIL", "")
 
 # База REST API «Платёжного шлюза» Альфы (оканчивается на /payment/rest/):
 #   боевой:   https://pay.alfabank.ru/payment/rest/
