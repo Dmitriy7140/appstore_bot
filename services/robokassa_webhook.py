@@ -112,6 +112,10 @@ async def _handle(request: web.Request) -> web.Response:
     else:
         data = dict(request.query)
 
+    # ВРЕМЕННО (диагностика чеков): полный дамп того, что реально прислала Robokassa.
+    # Убрать после отладки — тут может быть email покупателя.
+    logger.info(f"Robokassa ResultURL RAW [{request.method}]: {dict(data)}")
+
     out_sum = data.get("OutSum") or data.get("OutSumm") or ""
     inv_id_raw = data.get("InvId") or ""
     signature = data.get("SignatureValue", "")
