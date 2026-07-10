@@ -104,15 +104,19 @@ async def create_payment(amount: int, chat_id, user_id, source: str | None = Non
         "Shp_nom": str(amount),
     }
 
-    # Receipt (если фискализация включена) входит в подпись в URL-encoded виде.
+    # Receipt при фискализации: в ПОДПИСЬ идёт СЫРОЙ JSON (эмпирически подтверждено
+    # на боевом магазине — вариант с url-encoded в подписи Robokassa отвергает),
+    # а в URL — тот же JSON, но url-encoded.
+    receipt_json = ""
     receipt_enc = ""
     if ROBOKASSA_FISCAL:
-        receipt_enc = urllib.parse.quote(_build_receipt(amount_rub), safe="")
+        receipt_json = _build_receipt(amount_rub)
+        receipt_enc = urllib.parse.quote(receipt_json, safe="")
 
-    # hash(MerchantLogin:OutSum:InvId[:Receipt]:Пароль#1[:Shp_*])
+    # hash(MerchantLogin:OutSum:InvId[:Receipt(raw JSON)]:Пароль#1[:Shp_*])
     sign_parts = [ROBOKASSA_MERCHANT_LOGIN, out_sum, str(inv_id)]
-    if receipt_enc:
-        sign_parts.append(receipt_enc)
+    if receipt_json:
+        sign_parts.append(receipt_json)
     sign_parts.append(ROBOKASSA_PASSWORD1)
     signature = hash_signature(":".join(sign_parts) + shp_suffix(shp))
 
