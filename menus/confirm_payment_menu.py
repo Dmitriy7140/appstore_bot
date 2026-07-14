@@ -50,7 +50,6 @@ async def process_payment(callback: CallbackQuery):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)],
-        [InlineKeyboardButton(text="Прочти перед оплатой", callback_data="asfaq_payment")],
         [InlineKeyboardButton(text="📋 Меню", callback_data="main_menu")]
     ])
 
