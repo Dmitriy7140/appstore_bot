@@ -3,14 +3,14 @@ from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
-from keyboards.service_buttons import service_keyboard
+from keyboards.menu_buttons import main_menu_keyboard
 
 from menus.deeplinks import handle_deeplink
 from repository.database.database import add_client_source, add_referral
 from services.media_cache import send_cached_photo
 
 
-MAIN_MENU_PHOTO = "static/menus/as.png"
+MAIN_MENU_PHOTO = "static/menus/main_menu_2026.png"
 
 rt = Router()
 
@@ -52,24 +52,40 @@ async def main_menu(callback: CallbackQuery):
 
 async def show_main_menu(target: Message|CallbackQuery):
 
-    text = ("<b>📱 Поможем оплатить ваши подписки App Store за 2 минуты!</b>\n\n"
-            ""
-            "С 1 апреля этого года оплачивать подписки в App Store в России через мобильного оператора стало невозможно\n\n"
-            ""
-            "<b>👉🏻 Но мы нашли решение:</b> сменить регион App Store на Турцию и пополнить аккаунт через подарочную карту, чтобы оплатить iCloud, Apple Music, Telegram Premium и другие подписки.\n\n"
-
-            "Это безопасно, удобно и быстро. Уже 1000+ наших клиентов сделали это и пользуются любимыми приложениями без проблем. Как раньше, без блокировок.\n\n"
-            ""
-            "👩‍💻<b>Официальный сайт:</b> 2pay.money\n\n"
-            "👤<b>Техническая поддержка:</b> @MANAGER_2PAY\n\n"
-            
-            "<b>🇹🇷 Мы поможем сменить регион и выдадим подарочную карту за 2 минуты. Выбирайте нужный раздел 👇</b>")
+    text = (
+        "<b>📱 Поможем оплатить подписки App Store и пополнить PlayStation — за 2 минуты!</b>\n\n"
+        "С 1 апреля 2026 в России больше нельзя оплачивать покупки в App Store через мобильного "
+        "оператора, а иностранные карты не принимаются.\n\n"
+        "<b>👉🏻 Решение простое:</b> сменить регион Apple ID (<b>Турция или США</b>) и пополнить "
+        "аккаунт подарочным кодом — чтобы оплачивать iCloud, Apple Music, Telegram Premium и другие "
+        "подписки. А для геймеров — коды <b>PlayStation</b> на игры и PS Plus.\n\n"
+        "<b>Это безопасно, удобно и быстро.</b> Уже 1000+ клиентов пользуются любимыми сервисами как "
+        "раньше, без блокировок.\n\n"
+        "🛒 Открыть магазин — кнопка слева снизу\n"
+        "🇹🇷🇺🇸 App Store: Турция и США — коды и смена региона\n"
+        "🎮 PlayStation: коды на игры и подписки\n\n"
+        "👩‍💻 <b>Официальный сайт</b>: 2pay.money\n"
+        "👤 <b>Техническая поддержка:</b> @MANAGER_2PAY\n\n"
+        "Выбирайте нужный раздел 👇"
+    )
     if isinstance(target, Message):
-        await send_cached_photo(target, MAIN_MENU_PHOTO, caption=text, reply_markup=service_keyboard("as"), parse_mode="html")
+        await send_cached_photo(
+            target,
+            MAIN_MENU_PHOTO,
+            caption=text,
+            reply_markup=main_menu_keyboard(),
+            parse_mode="html",
+        )
 
     elif isinstance(target, CallbackQuery):
 
-        await send_cached_photo(target.message, MAIN_MENU_PHOTO, caption=text, reply_markup=service_keyboard("as"), parse_mode="html")
+        await send_cached_photo(
+            target.message,
+            MAIN_MENU_PHOTO,
+            caption=text,
+            reply_markup=main_menu_keyboard(),
+            parse_mode="html",
+        )
         await target.answer()
 
 
