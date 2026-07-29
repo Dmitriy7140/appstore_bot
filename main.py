@@ -28,7 +28,6 @@ from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
 from services.scheduler import start_scheduler
-from services.payment_provider import start_webhook_server
 from services.maintenance import MaintenanceMiddleware, load_broke
 from commands import announce, allusers, menulink, maintenance
 
@@ -150,9 +149,6 @@ async def main():
 
     # 3. запуск
 
-    # HTTP-сервер для callback-уведомлений активной кассы (по умолчанию Альфа-Банк)
-    webhook_runner = await start_webhook_server(bot)
-
     # апдейты Telegram по-прежнему забираем поллингом
     await bot.delete_webhook(drop_pending_updates=True)
 
@@ -165,11 +161,7 @@ async def main():
         # systemctl stop/restart были мгновенными (а не ждали SIGKILL по таймауту).
         logger.info("Останавливаемся — гасим фоновые задачи и ресурсы...")
 
-        # 1. перестаём принимать callback-уведомления кассы
-        with suppress(Exception):
-            await webhook_runner.cleanup()
-
-        # 2. фоновая аналитика + вотчдог
+        # 1. фоновая аналитика + вотчдог
         anal_task.cancel()
         with suppress(asyncio.CancelledError):
             await anal_task
@@ -178,19 +170,19 @@ async def main():
         with suppress(asyncio.CancelledError):
             await watchdog_task
 
-        # 3. воркеры рассылки
+        # 2. воркеры рассылки
         with suppress(Exception):
             await mailer.stop()
 
-        # 4. планировщик отчётов
+        # 3. планировщик отчётов
         with suppress(Exception):
             scheduler.shutdown(wait=False)
 
-        # 5. пул соединений БД
+        # 4. пул соединений БД
         with suppress(Exception):
             await database.close_pool()
 
-        # 6. сессия бота — в самом конце
+        # 5. сессия бота — в самом конце
         with suppress(Exception):
             await bot.session.close()
 

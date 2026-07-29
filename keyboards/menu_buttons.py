@@ -1,17 +1,6 @@
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-
-WEB_APP_URL = "https://public-inky-sigma.vercel.app"
-
-
-def _mini_app_url(start_param: str) -> str:
-    """Добавляет выбранный раздел к URL Telegram Mini App."""
-    parts = urlsplit(WEB_APP_URL)
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query["startapp"] = start_param
-    return urlunsplit((*parts[:3], urlencode(query), parts.fragment))
+from keyboards.webapp_buttons import mini_app_url
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -20,13 +9,13 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="🛒 App Store",
-                    web_app=WebAppInfo(url=_mini_app_url("appstore")),
+                    web_app=WebAppInfo(url=mini_app_url("appstore")),
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="🎮 PlayStation",
-                    web_app=WebAppInfo(url=_mini_app_url("ps")),
+                    web_app=WebAppInfo(url=mini_app_url("ps")),
                 )
             ],
             [
