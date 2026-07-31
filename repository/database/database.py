@@ -12,6 +12,18 @@ from asyncio import Queue
 
 pool: asyncpg.Pool | None = None
 
+REQUIRED_TABLES = (
+    "users",
+    "invite_links",
+    "referrals",
+    "appstore_transactions",
+    "processed_payments",
+    "used_codes",
+    "media_cache",
+    "survey_bonus",
+    "bot_flags",
+)
+
 
 
 class UserMiddleware(BaseMiddleware):
@@ -61,7 +73,7 @@ class UserMiddleware(BaseMiddleware):
 # -------------------------
 # ИНИЦИАЛИЗАЦИЯ БАЗЫ
 # -------------------------
-async def init_db():
+async def _legacy_init_db():
     global pool
     pool = await asyncpg.create_pool(                   #type:ignore
         user=DB_USER,
@@ -136,6 +148,31 @@ async def init_db():
 # -------------------------
 # ЗАКАЗЫ ROBOKASSA (контекст платежа для ResultURL)
 # -------------------------
+async def init_db():
+    """Connect the bot to the schema owned and migrated by the API project."""
+    global pool
+    pool = await asyncpg.create_pool(  # type: ignore
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        host=DB_HOST,
+    )
+    async with pool.acquire() as conn:
+        missing = [
+            table
+            for table in REQUIRED_TABLES
+            if await conn.fetchval("SELECT to_regclass($1)", f"public.{table}") is None
+        ]
+    if missing:
+        await close_pool()
+        raise RuntimeError(
+            "Shared database schema is not installed. "
+            "Apply 2pay-api/db/migrations/0001_shared_schema.sql first. "
+            f"Missing tables: {', '.join(missing)}"
+        )
+    logger.info("Shared database schema verified")
+
+
 async def create_robokassa_order(
     user_id: int,
     chat_id: int,
@@ -349,10 +386,19 @@ async def add_transaction(bot, telegram_id: int, tx_id: str, amount: int):
         async with conn.transaction():
 
             # запись транзакции
-            await conn.execute("""
-                INSERT INTO appstore_transactions (telegram_id, transaction_id, amount)
-                VALUES ($1, $2, $3)
+            transaction_id = await conn.fetchval("""
+                INSERT INTO appstore_transactions (
+                    transaction_id, user_id, telegram_id, amount, source
+                )
+                SELECT $2, id, telegram_id, $3, 'bot'
+                FROM users
+                WHERE telegram_id = $1
+                RETURNING transaction_id
             """, telegram_id, tx_id, amount)
+            if transaction_id is None:
+                raise RuntimeError(
+                    f"Cannot write transaction for unknown Telegram user {telegram_id}"
+                )
 
             # обновление суммы пользователя
             await conn.execute("""
@@ -416,7 +462,7 @@ async def add_client_source(telegram_id: int, payload: str | None):
                 WHERE telegram_id = $1
             """, telegram_id, payload)
 
-async def add_referral(telegram_id: int, payload: str):
+async def _legacy_add_referral(telegram_id: int, payload: str):
     # payload format: ref_<inviter_id>_<service>
     try:
         _, ref_id_str, service = payload.split("_")
@@ -456,7 +502,7 @@ async def add_referral(telegram_id: int, payload: str):
                 INSERT INTO referrals (user_id, invited_by, service)
                 VALUES ($1, $2, $3)
             """, telegram_id, ref_id, service)
-async def process_referral_reward(telegram_id: int):
+async def _legacy_process_referral_reward(telegram_id: int):
     p = get_pool()
 
     # 1. атомарно «застолбить» реферал (короткая транзакция, БЕЗ медленных вызовов внутри)
@@ -511,6 +557,96 @@ async def process_referral_reward(telegram_id: int):
         "inviter_id": inviter_id,
         "key": key
     }
+async def add_referral(telegram_id: int, payload: str):
+    """Bind a bot user to one inviter, independently of the old service suffix."""
+    try:
+        prefix, inviter_telegram_id, *_ = payload.split("_")
+        if prefix != "ref":
+            return
+        inviter_telegram_id = int(inviter_telegram_id)
+    except (TypeError, ValueError):
+        return
+
+    if telegram_id == inviter_telegram_id:
+        return
+
+    p = get_pool()
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            referred_user_id = await conn.fetchval(
+                "SELECT id FROM users WHERE telegram_id = $1", telegram_id
+            )
+            inviter_user_id = await conn.fetchval(
+                "SELECT id FROM users WHERE telegram_id = $1", inviter_telegram_id
+            )
+            if referred_user_id is None or inviter_user_id is None:
+                return
+
+            await conn.execute("""
+                INSERT INTO referrals (user_id, invited_by)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id) DO NOTHING
+            """, referred_user_id, inviter_user_id)
+
+
+async def process_referral_reward(telegram_id: int):
+    """Issue the one referral reward after the referred user's first payment."""
+    p = get_pool()
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow("""
+                SELECT referrals.user_id,
+                       inviter.telegram_id AS inviter_telegram_id
+                FROM referrals
+                JOIN users AS referred ON referred.id = referrals.user_id
+                JOIN users AS inviter ON inviter.id = referrals.invited_by
+                WHERE referred.telegram_id = $1
+                  AND referrals.activated = FALSE
+                FOR UPDATE OF referrals
+            """, telegram_id)
+            if row is None or row["inviter_telegram_id"] is None:
+                return None
+
+            referred_user_id = row["user_id"]
+            inviter_telegram_id = row["inviter_telegram_id"]
+            await conn.execute("""
+                UPDATE referrals
+                SET activated = TRUE, activated_at = now()
+                WHERE user_id = $1
+            """, referred_user_id)
+
+    key = await run_sheet(sheets.get_key, 400)
+    if not key:
+        logger.error("No referral reward code is available")
+        async with p.acquire() as conn:
+            await conn.execute("""
+                UPDATE referrals
+                SET activated = FALSE, activated_at = NULL
+                WHERE user_id = $1
+            """, referred_user_id)
+        return None
+
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("""
+                INSERT INTO used_codes (
+                    code, nominal, user_id, telegram_id, purpose, source
+                )
+                SELECT $1, 400, id, telegram_id, 'referral_reward', 'bot'
+                FROM users
+                WHERE id = (
+                    SELECT invited_by FROM referrals WHERE user_id = $2
+                )
+            """, key, referred_user_id)
+            await conn.execute("""
+                UPDATE referrals
+                SET reward_given = TRUE, reward_given_at = now()
+                WHERE user_id = $1
+            """, referred_user_id)
+
+    return {"inviter_id": inviter_telegram_id, "key": key}
+
+
 async def send_referral_reward(bot, inviter_id: int, key: str):
     try:
         user_link = f"tg://user?id={inviter_id}"

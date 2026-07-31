@@ -27,9 +27,9 @@ async def as_ref_menu(callback: CallbackQuery):
     await send_ref_menu(callback.message, callback.from_user.id)
     await callback.answer()
 def ref_keyboard(user_id):
-    url = f"https://t.me/Official_2paybot?start=ref_{user_id}_as"
+    url = f"https://t.me/Official_2paybot?start=ref_{user_id}"
     if TEST_MODE:
-        url = f"https://t.me/appstore_cash_bot?start=ref_{user_id}_as"
+        url = f"https://t.me/appstore_cash_bot?start=ref_{user_id}"
     builder = InlineKeyboardBuilder()
     builder.button(text="🔗 Скопировать ссылку", copy_text=CopyTextButton(text=url))
     return builder.as_markup()
