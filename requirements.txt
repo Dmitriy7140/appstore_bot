@@ -1,4 +1,3 @@
-yookassa
 aiogram
 aiohttp
 python-dotenv

@@ -1,0 +1,19 @@
+[Unit]
+Description=App Store Telegram bot
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=appstorebot
+Group=appstorebot
+WorkingDirectory=/opt/appstore_bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/appstore_bot/.venv/bin/python /opt/appstore_bot/main.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
