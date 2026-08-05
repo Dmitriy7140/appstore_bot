@@ -366,8 +366,8 @@ async def target_conflicts(connection: asyncpg.Connection) -> dict[str, int]:
             SELECT count(*)
             FROM legacy_transactions AS legacy
             JOIN appstore_transactions AS current ON current.transaction_id = legacy.transaction_id
-            JOIN users AS current_user ON current_user.id = current.user_id
-            WHERE current_user.telegram_id IS DISTINCT FROM legacy.telegram_id
+            JOIN users AS existing_user ON existing_user.id = current.user_id
+            WHERE existing_user.telegram_id IS DISTINCT FROM legacy.telegram_id
                OR current.amount IS DISTINCT FROM legacy.amount
         """)),
         "referrals": int(await connection.fetchval("""
