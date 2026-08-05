@@ -394,7 +394,7 @@ async def migration_plan(connection: asyncpg.Connection) -> dict[str, int]:
              LEFT JOIN invite_links AS current USING (link)
              WHERE current.link IS NULL) AS invite_links_to_insert,
             (SELECT count(*) FROM legacy_referrals AS legacy
-             JOIN users AS referred ON referred.telegram_id = legacy.telegram_id
+             LEFT JOIN users AS referred ON referred.telegram_id = legacy.telegram_id
              LEFT JOIN referrals AS current ON current.user_id = referred.id
              WHERE current.user_id IS NULL) AS referrals_to_insert
     """)
