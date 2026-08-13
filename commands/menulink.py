@@ -39,7 +39,7 @@ def _dest_keyboard():
     builder = InlineKeyboardBuilder()
     for row in service_keyboard("as").inline_keyboard:
         for btn in row:
-            if not btn.callback_data:           # url-кнопки (Отзывы) — нечего деплинкать
+            if not btn.callback_data:           # url-кнопки — нечего деплинкать
                 continue
             if btn.callback_data.endswith(":topup"):   # суммы пополнения не нужны
                 continue

@@ -12,6 +12,7 @@ from aiogram.types import Message
 
 from menus.faqs import send_region_faq, send_questions_faq
 from menus.referal_menu import send_ref_menu
+from menus.reviews_menu import send_reviews_menu
 
 
 async def _send_ref(message: Message):
@@ -24,6 +25,7 @@ DEEPLINK_MENUS = {
     "asfaq_region": send_region_faq,
     "asfaq_questions": send_questions_faq,
     "asref": _send_ref,
+    "reviews_menu": send_reviews_menu,
 }
 
 

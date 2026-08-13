@@ -13,7 +13,7 @@ def service_keyboard(service):
             [InlineKeyboardButton(text="📌 Ответы на ваши вопросы",
                                   callback_data="asfaq_questions")],
             [InlineKeyboardButton(text="🙍‍♂️ Отзывы и гарантии",
-                                  url="https://t.me/review_2pay")],
+                                  callback_data="reviews_menu")],
             [InlineKeyboardButton(text="🎁 Бонус 100₺ за друга",
                                   callback_data=f"{service}ref")],
         ]

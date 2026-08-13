@@ -23,7 +23,7 @@ from config.config_env import BOT_TOKEN
 from config.utils import logger
 from services.tg_retry import RetryRequestMiddleware
 
-from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal_menu, confirm_payment_menu, survey_menu
+from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal_menu, confirm_payment_menu, survey_menu, reviews_menu
 from repository.database import database
 from repository.sheets.anal_sheets import AnalSheets, anal_loop
 from services.notification_service import Mailer
@@ -133,6 +133,7 @@ async def main():
     dp.include_router(payment_menu.rt)
     dp.include_router(confirm_payment_menu.rt)
     dp.include_router(survey_menu.rt)
+    dp.include_router(reviews_menu.rt)
     dp.include_router(faqs.rt)
     dp.include_router(announce.router)
     dp.include_router(referal_menu.rt)

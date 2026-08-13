@@ -27,7 +27,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="⭐️ Отзывы и гарантии",
-                    url="https://t.me/review_2pay",
+                    callback_data="reviews_menu",
                 )
             ],
         ]
