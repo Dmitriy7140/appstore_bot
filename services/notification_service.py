@@ -5,6 +5,15 @@ import time
 from asyncio import Queue
 from contextlib import suppress
 from aiogram import Bot
+from dataclasses import dataclass, field
+
+
+@dataclass
+class _MailingBatch:
+    remaining: int
+    success: int = 0
+    failed: int = 0
+    done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 
@@ -15,9 +24,6 @@ class Mailer:
         self.workers = workers
         self.queue: Queue = asyncio.Queue()
         self._tasks: list[asyncio.Task] = []
-
-        self.success = 0
-        self.failed = 0
 
         # Глобальный троттл на ВСЕ воркеры: не больше `rate` сообщений/с суммарно.
         # У Telegram лимит ~30/с на бота; держим рассылку ниже (20/с), чтобы всегда
@@ -39,29 +45,32 @@ class Mailer:
 
     async def worker(self):
         while True:
-            telegram_id, msg = await self.queue.get()
+            telegram_id, source_chat_id, source_message_id, batch = await self.queue.get()
             try:
-                await self._throttle()
-                await self.bot.copy_message(
-                    chat_id=telegram_id,
-                    from_chat_id=msg.chat.id,
-                    message_id=msg.message_id
-                )
-                self.success += 1
-
-            except TelegramRetryAfter as e:
-                # даже с троттлом прилетел флуд-контроль — ждём и возвращаем в очередь
-                await asyncio.sleep(e.retry_after + 0.5)
-                await self.queue.put((telegram_id, msg))
+                while True:
+                    try:
+                        await self._throttle()
+                        await self.bot.copy_message(
+                            chat_id=telegram_id,
+                            from_chat_id=source_chat_id,
+                            message_id=source_message_id,
+                        )
+                        batch.success += 1
+                        break
+                    except TelegramRetryAfter as e:
+                        await asyncio.sleep(e.retry_after + 0.5)
 
             except TelegramForbiddenError:
-                self.failed += 1
+                batch.failed += 1
 
             except Exception as e:
-                self.failed += 1
+                batch.failed += 1
                 self.logger.exception(f"Ошибка {telegram_id}: {e}")
 
             finally:
+                batch.remaining -= 1
+                if batch.remaining == 0:
+                    batch.done.set()
                 self.queue.task_done()
 
     async def start(self):
@@ -76,13 +85,24 @@ class Mailer:
         self._tasks.clear()
 
     async def send_to_many(self, users, msg: Message):
-        self.success = 0
-        self.failed = 0
+        return await self.send_copy_to_many(users, msg.chat.id, msg.message_id)
 
+    async def send_copy_to_many(
+        self,
+        users,
+        source_chat_id: int,
+        source_message_id: int,
+    ):
+        users = list(users)
+        if not users:
+            return 0, 0
+
+        batch = _MailingBatch(remaining=len(users))
         for user_id in users:
-            await self.queue.put((user_id, msg))
+            await self.queue.put(
+                (user_id, source_chat_id, source_message_id, batch)
+            )
 
+        await batch.done.wait()
 
-        await self.queue.join()
-
-        return self.success, self.failed
+        return batch.success, batch.failed

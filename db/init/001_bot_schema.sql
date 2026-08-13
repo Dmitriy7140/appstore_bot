@@ -91,6 +91,23 @@ CREATE TABLE bot_flags (
     enabled BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+CREATE TABLE scheduled_announcements (
+    weekday SMALLINT PRIMARY KEY,
+    send_time TIME NOT NULL,
+    audience TEXT NOT NULL CHECK (audience IN ('all', 'paid', 'rfool', 'others')),
+    source_chat_id BIGINT NOT NULL,
+    source_message_id BIGINT NOT NULL,
+    created_by BIGINT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_sent_at TIMESTAMPTZ,
+    last_success INTEGER,
+    last_failed INTEGER,
+    CONSTRAINT scheduled_announcements_weekday_check
+        CHECK (weekday BETWEEN 0 AND 6)
+);
+
 CREATE TABLE alfa_orders (
     order_number TEXT PRIMARY KEY,
     user_id BIGINT NOT NULL,

@@ -22,7 +22,36 @@ REQUIRED_TABLES = (
     "media_cache",
     "survey_bonus",
     "bot_flags",
+    "scheduled_announcements",
 )
+
+
+SCHEDULED_ANNOUNCEMENTS_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS scheduled_announcements (
+        weekday SMALLINT PRIMARY KEY,
+        send_time TIME NOT NULL,
+        audience TEXT NOT NULL CHECK (audience IN ('all', 'paid', 'rfool', 'others')),
+        source_chat_id BIGINT NOT NULL,
+        source_message_id BIGINT NOT NULL,
+        created_by BIGINT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_sent_at TIMESTAMPTZ,
+        last_success INTEGER,
+        last_failed INTEGER,
+        CONSTRAINT scheduled_announcements_weekday_check
+            CHECK (weekday BETWEEN 0 AND 6)
+    )
+"""
+
+SCHEDULED_ANNOUNCEMENTS_WEEKDAY_MIGRATION = """
+    ALTER TABLE scheduled_announcements
+        DROP CONSTRAINT IF EXISTS scheduled_announcements_weekday_check;
+    ALTER TABLE scheduled_announcements
+        ADD CONSTRAINT scheduled_announcements_weekday_check
+        CHECK (weekday BETWEEN 0 AND 6);
+"""
 
 
 
@@ -158,6 +187,12 @@ async def init_db():
         host=DB_HOST,
     )
     async with pool.acquire() as conn:
+        # В отличие от базовой схемы эта таблица добавлена после первого релиза,
+        # поэтому создаём её идемпотентно и для уже существующих инсталляций.
+        await conn.execute(SCHEDULED_ANNOUNCEMENTS_SCHEMA)
+        # Ранние версии разрешали только 0..4 (пн–пт). Обновляем ограничение,
+        # чтобы существующая база принимала субботу (5) и воскресенье (6).
+        await conn.execute(SCHEDULED_ANNOUNCEMENTS_WEEKDAY_MIGRATION)
         missing = [
             table
             for table in REQUIRED_TABLES

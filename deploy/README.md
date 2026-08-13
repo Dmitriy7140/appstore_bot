@@ -128,3 +128,12 @@ The bot uses long polling and deletes its old Telegram webhook at startup, so
 it needs no nginx or public port. Direct payment creation and payment webhooks
 are deliberately disabled; the bot only directs users to TMA and serves the
 bot-side code/referral flows after a confirmed purchase.
+
+## Scheduled announcements
+
+The bot supports immediate and weekly scheduled broadcasts through `/announce`.
+The schedule covers Monday through Sunday and uses the `Europe/Moscow` timezone.
+The scheduled-announcement table and its weekday constraint are created or
+updated automatically during bot startup. Detailed administrator, deployment,
+database-verification, and troubleshooting instructions are available in
+[`docs/announcements.md`](../docs/announcements.md).

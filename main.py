@@ -144,7 +144,8 @@ async def main():
     await mailer.start()
 
     dp["mailer"] = mailer
-    scheduler = start_scheduler()
+    scheduler = await start_scheduler(mailer)
+    dp["scheduler"] = scheduler
 
     logger.info("БД подключена, запускаем бота...")
 
@@ -171,13 +172,13 @@ async def main():
         with suppress(asyncio.CancelledError):
             await watchdog_task
 
-        # 2. воркеры рассылки
-        with suppress(Exception):
-            await mailer.stop()
-
-        # 3. планировщик отчётов
+        # 2. сначала останавливаем источник фоновых рассылок, затем их воркеры
         with suppress(Exception):
             scheduler.shutdown(wait=False)
+
+        # 3. воркеры рассылки
+        with suppress(Exception):
+            await mailer.stop()
 
         # 4. пул соединений БД
         with suppress(Exception):
