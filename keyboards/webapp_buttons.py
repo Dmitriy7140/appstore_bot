@@ -3,7 +3,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 
-WEB_APP_URL = "https://public-inky-sigma.vercel.app"
+WEB_APP_URL = "https://testamos.2pay.money"
 
 
 def mini_app_url(start_param: str) -> str:
