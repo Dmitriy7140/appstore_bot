@@ -31,6 +31,9 @@ chmod 600 .env
 - `TWO_PAY_API_START_TIMEOUT_SECONDS=3` ограничивает ожидание регистрации
   пользователя при `/start`; при сбое меню всё равно откроется, а следующий
   `/start` безопасно повторит upsert.
+- `TWO_PAY_API_INVENTORY_REFRESH_TIMEOUT_SECONDS=120` даёт административной
+  команде обновления кодов достаточно времени на последовательные запросы к
+  Google Sheets.
 
 `TWO_PAY_API_WEBHOOK_TOKEN` и токены API не являются Telegram-токеном.
 SQLite по умолчанию находится в
@@ -74,7 +77,9 @@ journalctl -u appstore-bot.service -f
 ```
 
 Проверка: отправьте `/start`, выполните `/allusers` из админ-аккаунта и
-`/announce`. В логе должны появиться запуск SQLite и API webhook.
+`/announce`. Команда `/codes` показывает рабочий остаток кодов в PostgreSQL,
+а `/refreshcodes` дозаполняет его из Google Sheets; обе доступны только
+Telegram ID из `ADMIN_IDS`. В логе должны появиться запуск SQLite и API webhook.
 
 ## Резервная копия SQLite
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import aiohttp
@@ -10,11 +11,32 @@ from config.config_env import (
     TWO_PAY_API_AUDIENCE_TOKEN,
     TWO_PAY_API_BASE_URL,
     TWO_PAY_API_INGEST_TOKEN,
+    TWO_PAY_API_INVENTORY_REFRESH_TIMEOUT_SECONDS,
     TWO_PAY_API_TIMEOUT_SECONDS,
 )
 
 
 Audience = Literal["all", "paid", "never_paid"]
+
+
+@dataclass(frozen=True, slots=True)
+class CodeNominalStock:
+    nominal: int
+    available: int
+    cache_limit: int
+
+
+@dataclass(frozen=True, slots=True)
+class CodeRegionStock:
+    region: str
+    available: int
+    nominals: tuple[CodeNominalStock, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CodeInventoryStock:
+    total_available: int
+    regions: tuple[CodeRegionStock, ...]
 
 
 class TwoPayApiError(RuntimeError):
@@ -34,13 +56,16 @@ async def _request(
     json_body: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
     audience: bool = False,
+    timeout_seconds: float | None = None,
 ) -> Any:
     token = _require_token(
         TWO_PAY_API_AUDIENCE_TOKEN if audience else TWO_PAY_API_INGEST_TOKEN,
         "TWO_PAY_API_AUDIENCE_TOKEN" if audience else "TWO_PAY_API_INGEST_TOKEN",
     )
     header_name = "X-Audience-Token" if audience else "X-Bot-API-Token"
-    timeout = aiohttp.ClientTimeout(total=TWO_PAY_API_TIMEOUT_SECONDS)
+    timeout = aiohttp.ClientTimeout(
+        total=TWO_PAY_API_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+    )
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.request(
@@ -102,3 +127,85 @@ async def register_bot_user(
         or response.get("telegram_id") != telegram_id
     ):
         raise TwoPayApiError("2PAY API returned invalid user registration response")
+
+
+async def get_code_inventory() -> CodeInventoryStock:
+    response = await _request("GET", "/v1/bot/code-inventory")
+    return _parse_code_inventory(response)
+
+
+async def refresh_code_inventory() -> CodeInventoryStock:
+    response = await _request(
+        "POST",
+        "/v1/bot/code-inventory/refresh",
+        timeout_seconds=TWO_PAY_API_INVENTORY_REFRESH_TIMEOUT_SECONDS,
+    )
+    if not isinstance(response, dict) or response.get("status") != "refreshed":
+        raise TwoPayApiError("2PAY API returned invalid inventory refresh response")
+    return _parse_code_inventory(response.get("inventory"))
+
+
+def _parse_code_inventory(value: Any) -> CodeInventoryStock:
+    if not isinstance(value, dict):
+        raise TwoPayApiError("2PAY API returned invalid code inventory")
+    total_available = value.get("total_available")
+    raw_regions = value.get("regions")
+    if not _is_non_negative_int(total_available) or not isinstance(raw_regions, list):
+        raise TwoPayApiError("2PAY API returned invalid code inventory")
+
+    regions: list[CodeRegionStock] = []
+    for raw_region in raw_regions:
+        if not isinstance(raw_region, dict):
+            raise TwoPayApiError("2PAY API returned invalid code inventory region")
+        region = raw_region.get("region")
+        available = raw_region.get("available")
+        raw_nominals = raw_region.get("nominals")
+        if (
+            not isinstance(region, str)
+            or not region
+            or not _is_non_negative_int(available)
+            or not isinstance(raw_nominals, list)
+        ):
+            raise TwoPayApiError("2PAY API returned invalid code inventory region")
+
+        nominals: list[CodeNominalStock] = []
+        for raw_nominal in raw_nominals:
+            if not isinstance(raw_nominal, dict):
+                raise TwoPayApiError("2PAY API returned invalid code inventory nominal")
+            nominal = raw_nominal.get("nominal")
+            nominal_available = raw_nominal.get("available")
+            cache_limit = raw_nominal.get("cache_limit")
+            if (
+                not _is_positive_int(nominal)
+                or not _is_non_negative_int(nominal_available)
+                or not _is_positive_int(cache_limit)
+            ):
+                raise TwoPayApiError("2PAY API returned invalid code inventory nominal")
+            nominals.append(
+                CodeNominalStock(
+                    nominal=nominal,
+                    available=nominal_available,
+                    cache_limit=cache_limit,
+                )
+            )
+        if available != sum(item.available for item in nominals):
+            raise TwoPayApiError("2PAY API returned inconsistent code inventory region")
+        regions.append(
+            CodeRegionStock(
+                region=region,
+                available=available,
+                nominals=tuple(nominals),
+            )
+        )
+
+    if total_available != sum(region.available for region in regions):
+        raise TwoPayApiError("2PAY API returned inconsistent code inventory total")
+    return CodeInventoryStock(total_available=total_available, regions=tuple(regions))
+
+
+def _is_non_negative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _is_positive_int(value: Any) -> bool:
+    return _is_non_negative_int(value) and value > 0

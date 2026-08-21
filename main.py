@@ -19,7 +19,7 @@ from services.notification_service import Mailer
 from services.scheduler import start_scheduler
 from services.maintenance import MaintenanceMiddleware, load_broke
 from services.two_pay_api_webhook import start_webhook_server
-from commands import announce, allusers, menulink, maintenance
+from commands import announce, allusers, code_inventory, menulink, maintenance
 
 def _make_session() -> AiohttpSession:
     """
@@ -123,6 +123,7 @@ async def main():
     dp.include_router(announce.router)
     dp.include_router(referal_menu.rt)
     dp.include_router(allusers.rt)
+    dp.include_router(code_inventory.router)
     dp.include_router(menulink.router)
     dp.include_router(maintenance.router)
     mailer = Mailer(bot, logger)
