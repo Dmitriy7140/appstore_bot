@@ -5,9 +5,10 @@
 middleware и вместо обычной логики юзеру отдаётся сообщение про менеджера.
 Команды (в т.ч. сам тумблер /broke) — это message-события, их middleware не трогает.
 
-Состояние хранится в БД (таблица bot_flags), чтобы режим переживал перезапуск бота
-(watchdog/systemd могут его рестартить), и кэшируется в памяти для горячего пути —
-middleware дёргается на каждый клик, ходить в БД каждый раз не нужно.
+Состояние хранится в локальной SQLite (`service_flags`), чтобы режим
+переживал перезапуск бота (watchdog/systemd могут его рестартить), и кэшируется
+в памяти для горячего пути — middleware дёргается на каждый клик, читать SQLite
+каждый раз не нужно.
 """
 from typing import Any, Awaitable, Callable, Dict
 
@@ -15,7 +16,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery
 
 from config.utils import logger
-from repository.database import database
+from repository.sqlite_storage import get_repository
 
 BROKE_FLAG = "broke"
 
@@ -24,7 +25,7 @@ BROKE_TEXT = (
     "напишите ваш вопрос @MANAGER_2PAY"
 )
 
-# кэш в памяти; источник истины — БД, синхронизируется при старте и при переключении
+# Кэш в памяти; источник истины — локальная SQLite.
 _broke = False
 
 
@@ -33,21 +34,21 @@ def is_broke() -> bool:
 
 
 async def load_broke() -> None:
-    """Восстановить состояние из БД при старте бота."""
+    """Восстановить состояние из SQLite при старте бота."""
     global _broke
     try:
-        _broke = await database.get_flag(BROKE_FLAG)
-        logger.info(f"Режим поломки при старте: {'ВКЛ' if _broke else 'выкл'}")
+        _broke = await get_repository().get_flag(BROKE_FLAG)
+        logger.info(f"Режим поломки из SQLite: {'ВКЛ' if _broke else 'выкл'}")
     except Exception:
-        logger.exception("Не смог загрузить флаг broke из БД — считаем выключенным")
+        logger.exception("Не смог загрузить флаг broke из SQLite — считаем выключенным")
         _broke = False
 
 
 async def set_broke(value: bool) -> None:
-    """Переключить режим: обновить и память, и БД."""
+    """Переключить режим: обновить SQLite и кэш в памяти."""
     global _broke
+    await get_repository().set_flag(BROKE_FLAG, value)
     _broke = value
-    await database.set_flag(BROKE_FLAG, value)
 
 
 class MaintenanceMiddleware(BaseMiddleware):

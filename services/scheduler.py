@@ -1,14 +1,9 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import pytz
-from repository.sheets.sales_report import MarketingReportService
-from repository.database.announcements import (
-    get_scheduled_announcement,
-    list_scheduled_announcements,
-    mark_scheduled_announcement_sent,
-)
-from repository.database.database import get_user_ids_by_state
 from config.config_env import ADMIN_IDS, TEST_MODE
+from repository.sqlite_storage import get_repository
 from services.notification_service import Mailer
+from services.two_pay_api_client import get_audience
 
 from config.utils import logger
 
@@ -21,7 +16,7 @@ def announcement_job_id(weekday: int) -> str:
 
 
 async def _send_scheduled_announcement(weekday: int, mailer: Mailer) -> None:
-    announcement = await get_scheduled_announcement(weekday)
+    announcement = await get_repository().get_schedule(weekday)
     if announcement is None:
         logger.info("Scheduled announcement for weekday=%s no longer exists", weekday)
         return
@@ -29,14 +24,14 @@ async def _send_scheduled_announcement(weekday: int, mailer: Mailer) -> None:
     users = (
         ADMIN_IDS
         if TEST_MODE
-        else await get_user_ids_by_state(announcement["audience"])
+        else await get_audience(announcement["audience"])
     )
     success, failed = await mailer.send_copy_to_many(
         users,
         announcement["source_chat_id"],
         announcement["source_message_id"],
     )
-    await mark_scheduled_announcement_sent(weekday, success, failed)
+    await get_repository().record_schedule_delivery(weekday, success, failed)
     logger.info(
         "Scheduled announcement sent: weekday=%s audience=%s total=%s success=%s failed=%s",
         weekday,
@@ -81,23 +76,8 @@ async def start_scheduler(mailer: Mailer):
         timezone=pytz.timezone("Europe/Moscow")
     )
 
-    service = MarketingReportService()
-
-    async def job():
-        try:
-            await service.write_daily_report()
-            logger.info("Marketing report отправлен")
-        except Exception as e:
-            logger.exception(f"Scheduler error: {e}")
-
-    scheduler.add_job(
-        job,
-        trigger="cron",
-        hour=10,
-        minute=00
-    )
-
-    for announcement in await list_scheduled_announcements():
+    # Only the schedule is local. Recipient audiences still come from the API.
+    for announcement in await get_repository().list_schedules():
         schedule_announcement_job(scheduler, mailer, announcement)
 
     scheduler.start()

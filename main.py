@@ -1,34 +1,24 @@
 import asyncio
 import os
-import socket
-import requests.sessions
-
-# gspread и yookassa SDK ходят по сети через requests, по умолчанию БЕЗ таймаута → при
-# сбое/недоступности Google Sheets запрос виснет НАВСЕГДА: поток пула run_sheet застревает,
-# а все хендлеры, ждущие его, копятся (tasks растут до сотен) — это и есть «залип через 7-8ч».
-# socket.setdefaulttimeout закрывает только connect-фазу и не всегда бьёт по read у requests,
-# поэтому вешаем ЯВНЫЙ таймаут на КАЖДЫЙ requests-вызов — теперь он физически не зависнет.
-socket.setdefaulttimeout(20)
-
-_orig_requests_request = requests.sessions.Session.request
-def _requests_request_with_timeout(self, *args, **kwargs):
-    kwargs.setdefault("timeout", 20)
-    return _orig_requests_request(self, *args, **kwargs)
-requests.sessions.Session.request = _requests_request_with_timeout
 
 from contextlib import suppress
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
-from config.config_env import BOT_TOKEN
+from aiogram.fsm.storage.memory import SimpleEventIsolation
+from config.config_env import BOT_TOKEN, SQLITE_PATH
 from config.utils import logger
+from repository.sqlite_storage import (
+    SQLiteFsmStorage,
+    SQLiteRepository,
+    configure_repository,
+)
 from services.tg_retry import RetryRequestMiddleware
 
-from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal_menu, confirm_payment_menu, survey_menu, reviews_menu
-from repository.database import database
-from repository.sheets.anal_sheets import AnalSheets, anal_loop
+from menus import service_menu, start, amounts_menu, payment_menu, faqs, referal_menu, confirm_payment_menu, reviews_menu
 from services.notification_service import Mailer
 from services.scheduler import start_scheduler
 from services.maintenance import MaintenanceMiddleware, load_broke
+from services.two_pay_api_webhook import start_webhook_server
 from commands import announce, allusers, menulink, maintenance
 
 def _make_session() -> AiohttpSession:
@@ -54,10 +44,9 @@ bot.session.middleware(RetryRequestMiddleware())
 
 async def _watchdog():
     """
-    Раз в минуту логирует состояние ресурсов — чтобы ПОЙМАТЬ медленную утечку,
+    Раз в минуту логирует состояние ресурсов — чтобы поймать медленную утечку,
     из-за которой бот «залипает» через 7-8 часов. По логам перед заморозкой будет
     видно, что упёрлось в потолок:
-      • db_pool idle падает до 0 и держится → исчерпан пул соединений БД (где-то держат коннект);
       • tasks безудержно растёт → хендлеры копятся (висят на await, не завершаются);
       • fds растёт → утечка сокетов/файловых дескрипторов;
       • watchdog ВООБЩЕ перестал писать → event loop заблокирован синхронным вызовом.
@@ -66,24 +55,20 @@ async def _watchdog():
     stuck = 0
     while True:
         try:
-            pool = database.pool
-            size = pool.get_size() if pool is not None else -1
-            idle = pool.get_idle_size() if pool is not None else -1
             tasks = len(asyncio.all_tasks())
             try:
                 fds = len(os.listdir(f"/proc/{pid}/fd"))
             except Exception:
                 fds = -1
-            msg = f"[watchdog] db_pool size={size} idle={idle} | tasks={tasks} | fds={fds}"
+            msg = f"[watchdog] tasks={tasks} | fds={fds}"
 
-            # «застряли»: хендлеры копятся (висят на await, не завершаются). Норма tasks ~ 8-20.
-            # Доп.признак — пул создан, но все коннекты заняты.
-            bad = tasks > 80 or (size > 0 and idle == 0)
+            # «застряли»: хендлеры копятся (висят на await, не завершаются).
+            bad = tasks > 80
             stuck = stuck + 1 if bad else 0
 
             if bad or (fds != -1 and fds > 800):
                 logger.warning(msg + f"  <-- ЗАЛИПАНИЕ? (stuck={stuck}мин)")
-                # дамп: на каком await копятся задачи (видно виновника — run_sheet/send_message/acquire)
+                # дамп: на каком await копятся задачи (видно виновника)
                 if tasks > 80:
                     shown = 0
                     for t in asyncio.all_tasks():
@@ -111,18 +96,19 @@ async def _watchdog():
 
 
 async def main():
-
-    await database.init_db()
+    repository = SQLiteRepository(SQLITE_PATH)
+    await repository.open()
+    configure_repository(repository)
+    logger.info("Локальная SQLite открыта: %s", repository.path)
     await load_broke()   # восстановить состояние режима поломки после рестарта
+    api_webhook_runner = await start_webhook_server(bot, repository)
 
-    anal_sheets = AnalSheets()
-    anal_task = asyncio.create_task(anal_loop(anal_sheets))
     watchdog_task = asyncio.create_task(_watchdog())
 
-    dp = Dispatcher()
-
-    dp.message.middleware(database.UserMiddleware())
-    dp.callback_query.middleware(database.UserMiddleware())
+    dp = Dispatcher(
+        storage=SQLiteFsmStorage(repository),
+        events_isolation=SimpleEventIsolation(),
+    )
 
     # режим поломки: перехватывает все нажатия кнопок раньше остальных хендлеров
     dp.callback_query.outer_middleware(MaintenanceMiddleware())
@@ -132,7 +118,6 @@ async def main():
     dp.include_router(amounts_menu.rt)
     dp.include_router(payment_menu.rt)
     dp.include_router(confirm_payment_menu.rt)
-    dp.include_router(survey_menu.rt)
     dp.include_router(reviews_menu.rt)
     dp.include_router(faqs.rt)
     dp.include_router(announce.router)
@@ -147,7 +132,7 @@ async def main():
     scheduler = await start_scheduler(mailer)
     dp["scheduler"] = scheduler
 
-    logger.info("БД подключена, запускаем бота...")
+    logger.info("SQLite, API-клиент и webhook запущены, запускаем бота...")
 
     # 3. запуск
 
@@ -163,11 +148,7 @@ async def main():
         # systemctl stop/restart были мгновенными (а не ждали SIGKILL по таймауту).
         logger.info("Останавливаемся — гасим фоновые задачи и ресурсы...")
 
-        # 1. фоновая аналитика + вотчдог
-        anal_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await anal_task
-
+        # 1. вотчдог
         watchdog_task.cancel()
         with suppress(asyncio.CancelledError):
             await watchdog_task
@@ -180,11 +161,15 @@ async def main():
         with suppress(Exception):
             await mailer.stop()
 
-        # 4. пул соединений БД
+        # 4. HTTP-сервер событий API
         with suppress(Exception):
-            await database.close_pool()
+            await api_webhook_runner.cleanup()
 
-        # 5. сессия бота — в самом конце
+        # 5. локальное состояние закрываем после HTTP-сервера событий
+        with suppress(Exception):
+            await repository.close()
+
+        # 6. сессия бота — в самом конце
         with suppress(Exception):
             await bot.session.close()
 

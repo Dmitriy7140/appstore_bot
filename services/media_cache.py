@@ -1,12 +1,12 @@
 """
-Персистентный кэш Telegram file_id.
+Кэш Telegram file_id в памяти процесса и локальной SQLite.
 
 Проблема: бот слал фото/видео ФАЙЛАМИ (FSInputFile) на каждый вызов. На
 нестабильном канале большие аплоады рвутся (ServerDisconnected на SendPhoto),
 а ещё одни и те же файлы перезаливаются снова и снова, насыщая канал.
 
 Решение: Telegram на каждую загрузку возвращает file_id (строку). Храним его
-в postgres (таблица media_cache, переживает рестарты) и при повторной отправке
+в памяти и SQLite, а при повторной отправке
 шлём file_id вместо файла — это текстовый запрос, а не мегабайтный upload.
 
 Ключ = f"{bot.id}:{относительный_путь}". bot.id в ключе обязателен: file_id
@@ -17,11 +17,43 @@ from aiogram.types import Message, FSInputFile, InputMediaPhoto, InputMediaVideo
 from aiogram.exceptions import TelegramBadRequest
 
 from config.utils import logger
-from repository.database.database import get_file_id, set_file_id
+from repository.sqlite_storage import get_repository
+
+
+_file_ids: dict[str, str] = {}
 
 
 def _key(bot: Bot, path: str) -> str:
     return f"{bot.id}:{path}"
+
+
+async def _cached_file_id(key: str) -> str | None:
+    if key in _file_ids:
+        return _file_ids[key]
+    try:
+        file_id = await get_repository().get_file_id(key)
+    except Exception:
+        logger.exception("media_cache: не прочитал file_id из SQLite")
+        return None
+    if file_id:
+        _file_ids[key] = file_id
+    return file_id
+
+
+async def _remember_file_id(key: str, file_id: str, kind: str) -> None:
+    _file_ids[key] = file_id
+    try:
+        await get_repository().put_file_id(key, file_id, kind)
+    except Exception:
+        logger.exception("media_cache: не сохранил file_id в SQLite")
+
+
+async def _forget_file_id(key: str) -> None:
+    _file_ids.pop(key, None)
+    try:
+        await get_repository().delete_file_id(key)
+    except Exception:
+        logger.exception("media_cache: не удалил протухший file_id из SQLite")
 
 
 async def send_cached_photo(message: Message, path: str, **kwargs) -> Message:
@@ -33,15 +65,16 @@ async def send_cached_photo(message: Message, path: str, **kwargs) -> Message:
     bot = message.bot
     key = _key(bot, path)
 
-    file_id = await get_file_id(key)
+    file_id = await _cached_file_id(key)
     if file_id:
         try:
             return await message.answer_photo(photo=file_id, **kwargs)
         except TelegramBadRequest:
             logger.warning(f"file_id протух для {path} — перезаливаю")
+            await _forget_file_id(key)
 
     msg = await message.answer_photo(photo=FSInputFile(path), **kwargs)
-    await set_file_id(key, msg.photo[-1].file_id, "photo")
+    await _remember_file_id(key, msg.photo[-1].file_id, "photo")
     return msg
 
 
@@ -50,7 +83,7 @@ def _extras(item: dict) -> dict:
 
 
 async def _build_item(bot: Bot, item: dict):
-    file_id = await get_file_id(_key(bot, item["path"]))
+    file_id = await _cached_file_id(_key(bot, item["path"]))
     media = file_id if file_id else FSInputFile(item["path"])
     cls = InputMediaVideo if item["kind"] == "video" else InputMediaPhoto
     return cls(media=media, **_extras(item))
@@ -75,6 +108,7 @@ async def send_cached_media_group(message: Message, items: list[dict]) -> list[M
         logger.warning("media group: протух file_id — перезаливаю всю группу")
         rebuilt = []
         for it in items:
+            await _forget_file_id(_key(bot, it["path"]))
             cls = InputMediaVideo if it["kind"] == "video" else InputMediaPhoto
             rebuilt.append(cls(media=FSInputFile(it["path"]), **_extras(it)))
         sent = await message.answer_media_group(rebuilt)
@@ -83,7 +117,7 @@ async def send_cached_media_group(message: Message, items: list[dict]) -> list[M
     for it, msg in zip(items, sent):
         try:
             fid = msg.video.file_id if it["kind"] == "video" else msg.photo[-1].file_id
-            await set_file_id(_key(bot, it["path"]), fid, it["kind"])
+            await _remember_file_id(_key(bot, it["path"]), fid, it["kind"])
         except Exception:
             logger.exception(f"media_cache: не сохранил file_id для {it['path']}")
 

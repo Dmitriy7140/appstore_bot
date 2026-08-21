@@ -1,15 +1,18 @@
 [Unit]
 Description=App Store Telegram bot
-After=network-online.target docker.service
+After=network-online.target
 Wants=network-online.target
-Requires=docker.service
 
 [Service]
 Type=simple
-User=appstorebot
-Group=appstorebot
+User=root
+Group=root
 WorkingDirectory=/opt/appstore_bot
 Environment=PYTHONUNBUFFERED=1
+Environment=SQLITE_PATH=/var/lib/appstore-bot/appstore_bot.sqlite3
+StateDirectory=appstore-bot
+StateDirectoryMode=0700
+UMask=0077
 ExecStart=/opt/appstore_bot/.venv/bin/python /opt/appstore_bot/main.py
 Restart=always
 RestartSec=5

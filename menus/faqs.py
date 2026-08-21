@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from config.config_messages import FAQ_TEXTS
 
-from repository.sheets.sheets import sheets, run_sheet
+from keyboards.webapp_buttons import payment_moved_keyboard
 from services.media_cache import send_cached_media_group
 
 
@@ -27,7 +27,7 @@ FAQ_IMSTUPID = [
 
 
 async def send_region_faq(message: Message):
-    """Гайд по смене региона + кнопка «Получить адрес».
+    """Гайд по смене региона.
 
     Вынесено отдельно, чтобы это меню можно было показать и по колбэку
     (asfaq_region), и первым сообщением по deep-link (см. menus/deeplinks.py).
@@ -37,19 +37,6 @@ async def send_region_faq(message: Message):
         {"path": FAQ_REGION[0], "kind": "photo", "caption": FAQ_TEXTS["asfaq"]["region"], "parse_mode": "HTML"},
         {"path": FAQ_REGION[1], "kind": "photo"},
     ])
-    await message.answer(
-        "<b>Чтобы получить адрес для смены региона, жмите кнопку ниже 👇</b>",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="Получить адрес",
-                    callback_data="asfaq_adress",
-                    style="success",
-                )
-            ]]
-        ),
-        parse_mode="HTML",
-    )
 
 
 async def send_questions_faq(message: Message):
@@ -81,18 +68,10 @@ async def send_as_faq(callback: CallbackQuery):
         await send_region_faq(callback.message)
         await callback.answer()
     elif option == "adress":
-        a=await run_sheet(sheets.get_address)
-        text=("<b>Отправляем вам данные Турецкого адреса, вводите без ошибок:\n\n"
-              "<i>Текст копируется при нажатии</i>\n"
-            f"Street:  <code>{a['street']}</code>\n"
-              f"City:  <code>{a['city']}</code>\n"
-              f"Postcode:  <code>{a['postcode']}</code>\n"
-              f"Phone1:  <code>{a['phone1']}</code>\n"
-              f"Phone2:  <code>{a['phone2']}</code></b>\n")
-        await callback.message.answer(text, parse_mode="html", reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="💰Пополнить", callback_data="as:topup")],
-                             [InlineKeyboardButton(text="📋Меню", callback_data="main_menu")]]
-        ))
+        await callback.message.answer(
+            "Данные для смены региона доступны в веб-приложении.",
+            reply_markup=payment_moved_keyboard("appstore"),
+        )
         await callback.answer()
     elif option == "payment":
         text=('<code>⚠️ Оплата банковской картой временно недоступна по независящим от нас причинам.\n\n'

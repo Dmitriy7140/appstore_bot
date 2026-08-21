@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import Router
 from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
@@ -6,7 +8,10 @@ from aiogram.types import Message, CallbackQuery
 from keyboards.menu_buttons import main_menu_keyboard
 
 from menus.deeplinks import handle_deeplink
-from repository.database.database import add_client_source, add_referral
+from config.config_env import TWO_PAY_API_START_TIMEOUT_SECONDS
+from config.utils import logger
+from services.two_pay_api_client import TwoPayApiError, register_bot_user
+from services.two_pay_api_deep_links import queue_deep_link_event
 from services.media_cache import send_cached_photo
 
 
@@ -18,6 +23,7 @@ rt = Router()
 async def start(message: Message, command:CommandObject, state: FSMContext):
     # /start — чистый выход из любого незавершённого FSM-флоу (напр. опроса)
     await state.clear()
+    await _register_started_user(message)
     payload = command.args
     if payload:
         # Составной payload "<меню>__<источник>": до "__" — ключ меню (callback_data),
@@ -27,22 +33,50 @@ async def start(message: Message, command:CommandObject, state: FSMContext):
         else:
             menu_key = source = payload
 
-        # сначала фиксируем лид — откуда пришли (в т.ч. по deep-link на меню)
-        if payload.startswith("ref"):
-            await add_referral(
-                telegram_id=message.from_user.id,
-                payload=payload,
-            )
+        # API is the source of truth for attribution and referral binding. The
+        # bot only separates the two payload kinds and posts a normalized event.
+        if payload.startswith("ref_"):
+            try:
+                referrer_telegram_id = int(payload.removeprefix("ref_"))
+                if referrer_telegram_id <= 0:
+                    raise ValueError
+            except ValueError:
+                logger.warning("Ignoring malformed referral deep-link: %s", payload)
+            else:
+                queue_deep_link_event(
+                    telegram_id=message.from_user.id,
+                    link=payload,
+                    is_ref=True,
+                    referrer_telegram_id=referrer_telegram_id,
+                )
         else:
-            await add_client_source(
+            queue_deep_link_event(
                 telegram_id=message.from_user.id,
-                payload=source
+                link=source,
+                is_ref=False,
             )
         # deep-link на конкретное меню: menu_key == callback_data кнопки.
         # Совпало — показываем это меню первым сообщением и выходим.
         if await handle_deeplink(message, menu_key):
             return
     await show_main_menu(message)
+
+
+async def _register_started_user(message: Message) -> None:
+    """Create/update the API user before referral/source handling and menu output."""
+    user = message.from_user
+    if user is None:
+        logger.warning("Could not register /start without a Telegram user")
+        return
+    try:
+        await asyncio.wait_for(
+            register_bot_user(user.id, user.username),
+            timeout=TWO_PAY_API_START_TIMEOUT_SECONDS,
+        )
+    except (TwoPayApiError, TimeoutError) as error:
+        # Telegram should stay usable during a short API outage. The failure is
+        # visible in logs; a later /start safely retries the same upsert.
+        logger.warning("Could not register Telegram user %s in 2PAY API: %s", user.id, error)
 
 
 

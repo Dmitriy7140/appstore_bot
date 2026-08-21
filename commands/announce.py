@@ -11,15 +11,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config.config_env import ADMIN_IDS, TEST_MODE
 from config.utils import IsAdmin
-from repository.database.announcements import (
-    delete_scheduled_announcement,
-    get_scheduled_announcement,
-    list_scheduled_announcements,
-    upsert_scheduled_announcement,
-)
-from repository.database.database import get_user_ids_by_state
+from repository.sqlite_storage import get_repository
 from services.notification_service import Mailer
 from services.scheduler import remove_announcement_job, schedule_announcement_job
+from services.two_pay_api_client import get_audience
 
 
 router = Router()
@@ -45,8 +40,7 @@ DAY_SCHEDULE_LABELS = (
 AUDIENCE_CALLBACKS = {
     "announce_all": "all",
     "announce_paid": "paid",
-    "announce_rfool": "rfool",
-    "announce_others": "others",
+    "announce_never_paid": "never_paid",
 }
 TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
@@ -84,12 +78,8 @@ def audience_keyboard():
     builder.button(text="👥 Все", callback_data="announce_all")
     builder.button(text="💸 Оплатили", callback_data="announce_paid")
     builder.button(
-        text="🌍 Застряли в регионе",
-        callback_data="announce_rfool",
-    )
-    builder.button(
-        text="🤪 Не платили и не застряли",
-        callback_data="announce_others",
+        text="🤪 Не оплатили",
+        callback_data="announce_never_paid",
     )
     builder.adjust(1)
     return builder.as_markup()
@@ -129,8 +119,7 @@ def audience_label(audience: str) -> str:
     return {
         "all": "👥 Все пользователи",
         "paid": "💸 Те, кто оплатили",
-        "rfool": "🌍 Те, кто хотели сменить регион (не оплатили)",
-        "others": "🤪 Те, кто не платили и не застряли",
+        "never_paid": "🤪 Те, кто не оплатили",
     }.get(audience, "Неизвестно")
 
 
@@ -143,7 +132,7 @@ def parse_time(value: str) -> time | None:
 
 
 async def show_weekdays(message: Message, *, edit: bool = False) -> None:
-    announcements = await list_scheduled_announcements()
+    announcements = await get_repository().list_schedules()
     text = (
         "Выберите день недели. Время указано по Москве.\n\n"
         "Если рядом с днём уже есть время, запись можно изменить или удалить."
@@ -225,7 +214,7 @@ async def choose_weekday(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(weekday=weekday)
-    existing = await get_scheduled_announcement(weekday)
+    existing = await get_repository().get_schedule(weekday)
     if existing:
         await callback.message.edit_text(
             f"{DAY_NAMES[weekday]} уже настроен на "
@@ -269,7 +258,7 @@ async def delete_scheduled_day(
     scheduler: AsyncIOScheduler,
 ):
     weekday = int(callback.data.rsplit(":", 1)[1])
-    deleted = await delete_scheduled_announcement(weekday)
+    deleted = await get_repository().delete_schedule(weekday)
     remove_announcement_job(scheduler, weekday)
     await state.update_data(weekday=None)
     await show_weekdays(callback.message, edit=True)
@@ -292,7 +281,12 @@ async def announce_get_time(message: Message, state: FSMContext):
 
 @router.message(AnnounceState.waiting_message, IsAdmin())
 async def announce_get_message(message: Message, state: FSMContext):
-    await state.update_data(msg=message)
+    # SQLite FSM data is JSON: keep only stable Telegram identifiers, not the
+    # full aiogram Message object.
+    await state.update_data(
+        source_chat_id=message.chat.id,
+        source_message_id=message.message_id,
+    )
     await message.answer(
         "Кому отправить?",
         reply_markup=audience_keyboard(),
@@ -308,10 +302,13 @@ async def announce_get_message(message: Message, state: FSMContext):
 async def announce_get_audience(callback: CallbackQuery, state: FSMContext):
     selected = AUDIENCE_CALLBACKS[callback.data]
     data = await state.get_data()
-    msg: Message = data["msg"]
     await state.update_data(audience=selected)
 
-    preview = await msg.copy_to(callback.from_user.id)
+    preview = await callback.message.bot.copy_message(
+        chat_id=callback.from_user.id,
+        from_chat_id=data["source_chat_id"],
+        message_id=data["source_message_id"],
+    )
     if data["delivery_mode"] == "scheduled":
         weekday = data["weekday"]
         question = (
@@ -355,18 +352,19 @@ async def announce_confirm(
 ):
     await callback.answer()
     data = await state.get_data()
-    msg: Message = data["msg"]
     audience = data["audience"]
+    source_chat_id = data["source_chat_id"]
+    source_message_id = data["source_message_id"]
 
     if data["delivery_mode"] == "scheduled":
         weekday = data["weekday"]
         send_time = parse_time(data["send_time"])
-        announcement = await upsert_scheduled_announcement(
+        announcement = await get_repository().put_schedule(
             weekday=weekday,
             send_time=send_time,
             audience=audience,
-            source_chat_id=msg.chat.id,
-            source_message_id=msg.message_id,
+            source_chat_id=source_chat_id,
+            source_message_id=source_message_id,
             created_by=callback.from_user.id,
         )
         schedule_announcement_job(scheduler, mailer, announcement)
@@ -379,7 +377,7 @@ async def announce_confirm(
         await state.clear()
         return
 
-    users = await get_user_ids_by_state(audience) if not TEST_MODE else ADMIN_IDS
+    users = await get_audience(audience) if not TEST_MODE else ADMIN_IDS
     if not users:
         await callback.message.edit_text("Нет пользователей")
         await state.clear()
@@ -387,7 +385,11 @@ async def announce_confirm(
 
     await callback.message.edit_text("🚀 Начинаю рассылку...")
     total = len(users)
-    success, failed = await mailer.send_to_many(users, msg)
+    success, failed = await mailer.send_copy_to_many(
+        users,
+        source_chat_id,
+        source_message_id,
+    )
     await callback.message.edit_text(
         "✅ Готово\n\n"
         f"Всего: {total}\n"
