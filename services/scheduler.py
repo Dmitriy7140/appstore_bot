@@ -9,10 +9,13 @@ from config.config_env import (
     TEST_MODE,
 )
 from repository.sqlite_storage import get_repository
-from services.daily_sales_report import build_daily_sales_report
+from services.daily_sales_report import (
+    build_daily_sales_report,
+    latest_closed_period_end_date,
+)
 from services.notification_service import Mailer
 from services.tg_retry import send_flood_safe
-from services.two_pay_api_client import get_audience
+from services.two_pay_api_client import get_audience, sync_daily_marketing_sales
 
 from config.utils import logger
 
@@ -28,8 +31,21 @@ def announcement_job_id(weekday: int) -> str:
 async def _send_daily_sales_report(mailer: Mailer) -> None:
     if DAILY_SALES_REPORT_CHAT_ID is None:
         return
+    period_end_date = latest_closed_period_end_date()
     try:
-        report = await build_daily_sales_report()
+        marketing_sales = await sync_daily_marketing_sales(period_end_date)
+    except Exception:
+        logger.exception("Could not sync daily sales to the marketing spreadsheet")
+    else:
+        logger.info(
+            "Daily marketing report synced: date=%s row=%s sales=%s amount_rub=%s",
+            marketing_sales.report_date,
+            marketing_sales.marketing_sheet_row,
+            marketing_sales.sales_count,
+            marketing_sales.sales_rub,
+        )
+    try:
+        report = await build_daily_sales_report(period_end_date)
         await send_flood_safe(
             lambda: mailer.bot.send_message(
                 DAILY_SALES_REPORT_CHAT_ID,

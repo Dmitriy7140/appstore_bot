@@ -9,7 +9,7 @@ from services.daily_sales_report import (
     format_daily_sales_report,
     latest_closed_period_end_date,
 )
-from services.two_pay_api_client import DailySales
+from services.two_pay_api_client import DailySales, MarketingSalesSync
 
 
 class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
@@ -54,6 +54,32 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
                 call("appstore_us", date(2026, 8, 24)),
             ],
         )
+
+    async def test_scheduled_report_syncs_marketing_sheet_for_the_same_day(self) -> None:
+        from services import scheduler
+
+        period_end_date = date(2026, 8, 24)
+        sync = AsyncMock(
+            return_value=MarketingSalesSync(
+                report_date="23.08",
+                sales_rub=20_290,
+                sales_count=18,
+                marketing_sheet_row=7,
+            )
+        )
+        build_report = AsyncMock(return_value="daily report")
+        send = AsyncMock()
+        with (
+            patch.object(scheduler, "DAILY_SALES_REPORT_CHAT_ID", -100123),
+            patch("services.scheduler.latest_closed_period_end_date", return_value=period_end_date),
+            patch("services.scheduler.sync_daily_marketing_sales", sync),
+            patch("services.scheduler.build_daily_sales_report", build_report),
+            patch("services.scheduler.send_flood_safe", send),
+        ):
+            await scheduler._send_daily_sales_report(object())
+
+        sync.assert_awaited_once_with(period_end_date)
+        build_report.assert_awaited_once_with(period_end_date)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -46,6 +46,14 @@ class DailySales:
     field: DailySalesField
     sales_rub: int
     sales_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class MarketingSalesSync:
+    report_date: str
+    sales_rub: int
+    sales_count: int
+    marketing_sheet_row: int
 
 
 class TwoPayApiError(RuntimeError):
@@ -173,6 +181,22 @@ async def get_daily_sales(
     return sales
 
 
+async def sync_daily_marketing_sales(
+    period_end_date: date,
+) -> MarketingSalesSync:
+    """Write the combined App Store sales for one Moscow day to Google Sheets."""
+    response = await _request(
+        "POST",
+        "/v1/bot/daily-sales/marketing-report",
+        json_body={"period_end_date": period_end_date.isoformat()},
+    )
+    sales = _parse_marketing_sales_sync(response)
+    expected_report_date = (period_end_date - timedelta(days=1)).strftime("%d.%m")
+    if sales.report_date != expected_report_date:
+        raise TwoPayApiError("2PAY API returned marketing sales for an unexpected date")
+    return sales
+
+
 def _parse_code_inventory(value: Any) -> CodeInventoryStock:
     if not isinstance(value, dict):
         raise TwoPayApiError("2PAY API returned invalid code inventory")
@@ -244,6 +268,29 @@ def _parse_daily_sales(value: Any) -> DailySales:
     ):
         raise TwoPayApiError("2PAY API returned invalid daily sales")
     return DailySales(field=field, sales_rub=sales_rub, sales_count=sales_count)
+
+
+def _parse_marketing_sales_sync(value: Any) -> MarketingSalesSync:
+    if not isinstance(value, dict):
+        raise TwoPayApiError("2PAY API returned invalid marketing sales")
+    report_date = value.get("report_date")
+    sales_rub = value.get("sales_rub")
+    sales_count = value.get("sales_count")
+    marketing_sheet_row = value.get("marketing_sheet_row")
+    if (
+        not isinstance(report_date, str)
+        or not report_date
+        or not _is_non_negative_int(sales_rub)
+        or not _is_non_negative_int(sales_count)
+        or not _is_positive_int(marketing_sheet_row)
+    ):
+        raise TwoPayApiError("2PAY API returned invalid marketing sales")
+    return MarketingSalesSync(
+        report_date=report_date,
+        sales_rub=sales_rub,
+        sales_count=sales_count,
+        marketing_sheet_row=marketing_sheet_row,
+    )
 
 
 def _is_non_negative_int(value: Any) -> bool:
