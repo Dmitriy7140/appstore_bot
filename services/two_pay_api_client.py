@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -17,6 +18,7 @@ from config.config_env import (
 
 
 Audience = Literal["all", "paid", "never_paid"]
+DailySalesField = Literal["appstore_tr", "appstore_us"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +39,13 @@ class CodeRegionStock:
 class CodeInventoryStock:
     total_available: int
     regions: tuple[CodeRegionStock, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DailySales:
+    field: DailySalesField
+    sales_rub: int
+    sales_count: int
 
 
 class TwoPayApiError(RuntimeError):
@@ -145,6 +154,25 @@ async def refresh_code_inventory() -> CodeInventoryStock:
     return _parse_code_inventory(response.get("inventory"))
 
 
+async def get_daily_sales(
+    field: DailySalesField,
+    period_end_date: date,
+) -> DailySales:
+    """Return confirmed, non-referral website sales for one Moscow business day."""
+    response = await _request(
+        "POST",
+        "/v1/bot/daily-sales",
+        json_body={
+            "field": field,
+            "period_end_date": period_end_date.isoformat(),
+        },
+    )
+    sales = _parse_daily_sales(response)
+    if sales.field != field:
+        raise TwoPayApiError("2PAY API returned daily sales for an unexpected field")
+    return sales
+
+
 def _parse_code_inventory(value: Any) -> CodeInventoryStock:
     if not isinstance(value, dict):
         raise TwoPayApiError("2PAY API returned invalid code inventory")
@@ -201,6 +229,21 @@ def _parse_code_inventory(value: Any) -> CodeInventoryStock:
     if total_available != sum(region.available for region in regions):
         raise TwoPayApiError("2PAY API returned inconsistent code inventory total")
     return CodeInventoryStock(total_available=total_available, regions=tuple(regions))
+
+
+def _parse_daily_sales(value: Any) -> DailySales:
+    if not isinstance(value, dict):
+        raise TwoPayApiError("2PAY API returned invalid daily sales")
+    field = value.get("field")
+    sales_rub = value.get("sales_rub")
+    sales_count = value.get("sales_count")
+    if (
+        field not in {"appstore_tr", "appstore_us"}
+        or not _is_non_negative_int(sales_rub)
+        or not _is_non_negative_int(sales_count)
+    ):
+        raise TwoPayApiError("2PAY API returned invalid daily sales")
+    return DailySales(field=field, sales_rub=sales_rub, sales_count=sales_count)
 
 
 def _is_non_negative_int(value: Any) -> bool:

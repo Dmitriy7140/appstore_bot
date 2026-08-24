@@ -22,6 +22,33 @@ ADMIN_IDS = [
     if value.strip()
 ]
 
+
+def _optional_chat_id(name: str, default: str) -> int | None:
+    """Read a Telegram chat ID, allowing an empty value to disable a job."""
+    value = getenv(name, default).strip()
+    if not value:
+        return None
+    try:
+        chat_id = int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a Telegram chat ID") from error
+    if chat_id == 0:
+        raise ValueError(f"{name} must not be zero")
+    return chat_id
+
+
+# Daily website-sales report. Override the ID in .env or leave it empty to
+# disable the scheduled post entirely.
+DAILY_SALES_REPORT_CHAT_ID = _optional_chat_id(
+    "DAILY_SALES_REPORT_CHAT_ID", "-1004486126389"
+)
+DAILY_SALES_REPORT_HOUR = int(getenv("DAILY_SALES_REPORT_HOUR", "0"))
+DAILY_SALES_REPORT_MINUTE = int(getenv("DAILY_SALES_REPORT_MINUTE", "21"))
+if not 0 <= DAILY_SALES_REPORT_HOUR <= 23:
+    raise ValueError("DAILY_SALES_REPORT_HOUR must be in 0..23")
+if not 0 <= DAILY_SALES_REPORT_MINUTE <= 59:
+    raise ValueError("DAILY_SALES_REPORT_MINUTE must be in 0..59")
+
 # Local bot state only. Never store API customer/payment/referral data here.
 SQLITE_PATH = getenv("SQLITE_PATH", "data/appstore_bot.sqlite3")
 API_DELIVERY_LEASE_SECONDS = int(getenv("API_DELIVERY_LEASE_SECONDS", "120"))

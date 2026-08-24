@@ -1,9 +1,12 @@
+from datetime import date
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from services import two_pay_api_client as client
 from services.two_pay_api_client import (
+    DailySales,
     TwoPayApiError,
+    get_daily_sales,
     get_code_inventory,
     refresh_code_inventory,
     register_bot_user,
@@ -11,6 +14,26 @@ from services.two_pay_api_client import (
 
 
 class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_daily_sales_posts_expected_contract(self) -> None:
+        request = AsyncMock(
+            return_value={
+                "field": "appstore_tr",
+                "sales_rub": 17100,
+                "sales_count": 14,
+                "period_started_at": "2026-08-23T00:20:00+03:00",
+                "period_ended_at": "2026-08-24T00:20:00+03:00",
+            }
+        )
+        with patch("services.two_pay_api_client._request", request):
+            result = await get_daily_sales("appstore_tr", date(2026, 8, 24))
+
+        self.assertEqual(result, DailySales("appstore_tr", sales_rub=17100, sales_count=14))
+        request.assert_awaited_once_with(
+            "POST",
+            "/v1/bot/daily-sales",
+            json_body={"field": "appstore_tr", "period_end_date": "2026-08-24"},
+        )
+
     async def test_register_bot_user_posts_expected_contract(self) -> None:
         request = AsyncMock(
             return_value={"telegram_id": 12931239, "status": "registered"}
