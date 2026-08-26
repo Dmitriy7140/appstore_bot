@@ -41,6 +41,7 @@ class AnnouncementHelpersTest(unittest.TestCase):
         self.assertEqual(scheduler.kwargs["day_of_week"], "sun")
         self.assertEqual(scheduler.kwargs["hour"], 14)
         self.assertEqual(scheduler.kwargs["minute"], 25)
+        self.assertNotIn("end_date", scheduler.kwargs)
 
 
 class _FakeBot:

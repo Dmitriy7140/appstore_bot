@@ -58,7 +58,7 @@ def delivery_keyboard():
     builder = InlineKeyboardBuilder()
     builder.button(text="Отправить сейчас", callback_data="announce_mode_now")
     builder.button(
-        text="Отложенная доставка",
+        text="Еженедельная публикация",
         callback_data="announce_mode_scheduled",
     )
     builder.adjust(1)
@@ -135,6 +135,7 @@ async def show_weekdays(message: Message, *, edit: bool = False) -> None:
     announcements = await get_repository().list_schedules()
     text = (
         "Выберите день недели. Время указано по Москве.\n\n"
+        "Публикация повторяется каждую неделю, пока её не удалить. "
         "Если рядом с днём уже есть время, запись можно изменить или удалить."
     )
     markup = weekdays_keyboard(announcements)
@@ -313,7 +314,7 @@ async def announce_get_audience(callback: CallbackQuery, state: FSMContext):
         weekday = data["weekday"]
         question = (
             f"Сохраняем еженедельную отправку {DAY_SCHEDULE_LABELS[weekday]} "
-            f"в {data['send_time']} (МСК)?"
+            f"в {data['send_time']} (МСК)? Она будет повторяться, пока вы её не удалите."
         )
     else:
         question = "Отправляем это сообщение сейчас?"
@@ -369,7 +370,7 @@ async def announce_confirm(
         )
         schedule_announcement_job(scheduler, mailer, announcement)
         await callback.message.edit_text(
-            "✅ Публикация сохранена.\n\n"
+            "✅ Публикация сохранена и будет повторяться каждую неделю.\n\n"
             f"День: {DAY_NAMES[weekday]}\n"
             f"Время: {data['send_time']} (МСК)\n"
             f"Группа: {audience_label(audience)}"

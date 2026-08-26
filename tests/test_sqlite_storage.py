@@ -75,6 +75,13 @@ class SQLiteStorageTests(unittest.IsolatedAsyncioTestCase):
             created_by=12931239,
         )
         self.assertEqual(schedule["send_time"], time(10, 30))
+        await self.repository.close()
+
+        self.repository = SQLiteRepository(self.path)
+        await self.repository.open()
+        self.assertEqual(
+            (await self.repository.get_schedule(2))["send_time"], time(10, 30)
+        )
         await self.repository.record_schedule_delivery(2, 10, 1)
         self.assertEqual((await self.repository.get_schedule(2))["last_success"], 10)
 
