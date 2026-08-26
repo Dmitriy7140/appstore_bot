@@ -36,6 +36,7 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("App Store США</b>: 4 код(ов) · 3\u00a0190 ₽", report)
         self.assertIn("Коды PS</b>: 0 код(ов) · 0 ₽", report)
         self.assertIn("Итого: 20\u00a0290 ₽", report)
+        self.assertTrue(report.endswith("😂😂😂😂😂😂😂😂"))
 
     async def test_report_requests_both_api_fields_for_period_end_date(self) -> None:
         request = AsyncMock(

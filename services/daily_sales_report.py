@@ -11,6 +11,7 @@ from services.two_pay_api_client import DailySales, get_daily_sales
 
 MOSCOW_TIMEZONE = pytz.timezone("Europe/Moscow")
 DAY_CLOSE_TIME = time(0, 20)
+REPORT_FOOTER = "😂😂😂😂😂😂😂😂"
 
 
 def latest_closed_period_end_date(now: datetime | None = None) -> date:
@@ -59,6 +60,8 @@ def format_daily_sales_report(
             "🎮 <b>Коды PS</b>: 0 код(ов) · 0 ₽",
             "",
             f"💰 <b>Итого: {_format_number(total_rub)} ₽</b>",
+            "",
+            REPORT_FOOTER,
         ]
     )
 
