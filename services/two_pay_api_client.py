@@ -12,7 +12,6 @@ from config.config_env import (
     TWO_PAY_API_AUDIENCE_TOKEN,
     TWO_PAY_API_BASE_URL,
     TWO_PAY_API_INGEST_TOKEN,
-    TWO_PAY_API_INVENTORY_REFRESH_TIMEOUT_SECONDS,
     TWO_PAY_API_TIMEOUT_SECONDS,
 )
 
@@ -25,7 +24,6 @@ DailySalesField = Literal["appstore_tr", "appstore_us"]
 class CodeNominalStock:
     nominal: int
     available: int
-    cache_limit: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,17 +149,6 @@ async def get_code_inventory() -> CodeInventoryStock:
     return _parse_code_inventory(response)
 
 
-async def refresh_code_inventory() -> CodeInventoryStock:
-    response = await _request(
-        "POST",
-        "/v1/bot/code-inventory/refresh",
-        timeout_seconds=TWO_PAY_API_INVENTORY_REFRESH_TIMEOUT_SECONDS,
-    )
-    if not isinstance(response, dict) or response.get("status") != "refreshed":
-        raise TwoPayApiError("2PAY API returned invalid inventory refresh response")
-    return _parse_code_inventory(response.get("inventory"))
-
-
 async def get_daily_sales(
     field: DailySalesField,
     period_end_date: date,
@@ -226,18 +213,15 @@ def _parse_code_inventory(value: Any) -> CodeInventoryStock:
                 raise TwoPayApiError("2PAY API returned invalid code inventory nominal")
             nominal = raw_nominal.get("nominal")
             nominal_available = raw_nominal.get("available")
-            cache_limit = raw_nominal.get("cache_limit")
             if (
                 not _is_positive_int(nominal)
                 or not _is_non_negative_int(nominal_available)
-                or not _is_positive_int(cache_limit)
             ):
                 raise TwoPayApiError("2PAY API returned invalid code inventory nominal")
             nominals.append(
                 CodeNominalStock(
                     nominal=nominal,
                     available=nominal_available,
-                    cache_limit=cache_limit,
                 )
             )
         if available != sum(item.available for item in nominals):

@@ -333,8 +333,16 @@ async def _send_html(bot: Bot, payload: dict[str, object]) -> None:
         raise WebhookInputError("text is required")
     chat_id_value = payload.get("chat_id")
     chat_id = _manager_chat_id() if chat_id_value == 0 else _nonzero_int(chat_id_value, "chat_id")
+    open_warehouse = payload.get("open_warehouse", False)
+    if not isinstance(open_warehouse, bool):
+        raise WebhookInputError("open_warehouse must be a boolean")
+    options = {}
+    if open_warehouse:
+        options["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Открыть склад", url="https://warehouse.2pay.money"),
+        ]])
     await send_flood_safe(
-        lambda: bot.send_message(chat_id, text, parse_mode=ParseMode.HTML)
+        lambda: bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, **options)
     )
 
 

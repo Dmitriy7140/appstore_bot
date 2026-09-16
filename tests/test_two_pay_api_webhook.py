@@ -120,6 +120,27 @@ class TwoPayApiWebhookHttpTests(unittest.IsolatedAsyncioTestCase):
         await self.repository.close()
         self.temp_dir.cleanup()
 
+    async def test_signed_warehouse_alert_has_button_and_preserves_plain_html_events(self):
+        bot = SimpleNamespace(send_message=AsyncMock())
+        with patch.object(webhook, "TWO_PAY_API_WEBHOOK_TOKEN", "shared-secret"):
+            async with TestServer(webhook.build_app(bot, self.repository)) as server:
+                async with ClientSession() as session:
+                    for option in (True, False, "true"):
+                        body = json.dumps({"event": "telegram.html.v1", "payload": {
+                            "chat_id": -100123, "text": "Warehouse low stock", "open_warehouse": option,
+                        }}).encode()
+                        timestamp = str(int(time.time()))
+                        signature = hmac.new(b"shared-secret", timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+                        response = await session.post(server.make_url(webhook.TWO_PAY_API_WEBHOOK_PATH), data=body,
+                            headers={"X-2PAY-Timestamp": timestamp, "X-2PAY-Signature": "sha256=" + signature})
+                        self.assertEqual(response.status, 400 if option == "true" else 200)
+        self.assertEqual(bot.send_message.await_count, 2)
+        first, plain = bot.send_message.await_args_list
+        button = first.kwargs["reply_markup"].inline_keyboard[0][0]
+        self.assertEqual(button.text, "Открыть склад")
+        self.assertEqual(button.url, "https://warehouse.2pay.money")
+        self.assertNotIn("reply_markup", plain.kwargs)
+
     async def test_authenticated_test_event_reaches_the_bot(self) -> None:
         class FakeBot:
             def __init__(self) -> None:

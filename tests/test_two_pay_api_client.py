@@ -9,7 +9,6 @@ from services.two_pay_api_client import (
     TwoPayApiError,
     get_daily_sales,
     get_code_inventory,
-    refresh_code_inventory,
     register_bot_user,
     sync_daily_marketing_sales,
 )
@@ -87,7 +86,7 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(TwoPayApiError):
                 await register_bot_user(12931239, None)
 
-    async def test_code_inventory_contract_is_parsed_and_refresh_uses_long_timeout(self) -> None:
+    async def test_code_inventory_contract_accepts_unlimited_and_legacy_counts(self) -> None:
         inventory = {
             "total_available": 8,
             "regions": [
@@ -95,7 +94,7 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
                     "region": "tr",
                     "available": 7,
                     "nominals": [
-                        {"nominal": 100, "available": 7, "cache_limit": 20}
+                        {"nominal": 100, "available": 7, "cache_limit": None}
                     ],
                 },
                 {
@@ -107,28 +106,17 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
                 },
             ],
         }
-        request = AsyncMock(
-            side_effect=[inventory, {"status": "refreshed", "inventory": inventory}]
-        )
+        request = AsyncMock(return_value=inventory)
         with patch("services.two_pay_api_client._request", request):
             current = await get_code_inventory()
-            refreshed = await refresh_code_inventory()
 
         self.assertEqual(current.total_available, 8)
         self.assertEqual(current.regions[0].nominals[0].nominal, 100)
-        self.assertEqual(refreshed, current)
         self.assertEqual(
             request.await_args_list[0].args,
             ("GET", "/v1/bot/code-inventory"),
         )
-        self.assertEqual(
-            request.await_args_list[1].args,
-            ("POST", "/v1/bot/code-inventory/refresh"),
-        )
-        self.assertEqual(
-            request.await_args_list[1].kwargs["timeout_seconds"],
-            client.TWO_PAY_API_INVENTORY_REFRESH_TIMEOUT_SECONDS,
-        )
+        request.assert_awaited_once()
 
     async def test_code_inventory_rejects_inconsistent_totals(self) -> None:
         request = AsyncMock(
