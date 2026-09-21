@@ -19,7 +19,7 @@ from services.notification_service import Mailer
 from services.scheduler import start_scheduler
 from services.maintenance import MaintenanceMiddleware, load_broke
 from services.two_pay_api_webhook import start_webhook_server
-from commands import announce, allusers, code_inventory, daily_sales, menulink, maintenance
+from commands import announce, allusers, code_inventory, daily_sales, help_menu, menulink, maintenance
 
 def _make_session() -> AiohttpSession:
     """
@@ -113,6 +113,8 @@ async def main():
     # режим поломки: перехватывает все нажатия кнопок раньше остальных хендлеров
     dp.callback_query.outer_middleware(MaintenanceMiddleware())
 
+    # Handle /help before FSM message handlers so it cannot become draft content.
+    dp.include_router(help_menu.router)
     dp.include_router(start.rt)
     dp.include_router(service_menu.rt)
     dp.include_router(amounts_menu.rt)
