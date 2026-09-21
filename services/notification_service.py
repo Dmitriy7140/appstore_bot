@@ -1,4 +1,4 @@
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardMarkup, Message
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 import asyncio
 import time
@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 @dataclass
 class _MailingBatch:
     remaining: int
+    reply_markup: InlineKeyboardMarkup | None = None
     success: int = 0
     failed: int = 0
     done: asyncio.Event = field(default_factory=asyncio.Event)
@@ -24,6 +25,9 @@ class Mailer:
         self.workers = workers
         self.queue: Queue = asyncio.Queue()
         self._tasks: list[asyncio.Task] = []
+        # FIFO for whole posts, including the last worker's Telegram retries.
+        self._batch_lock = asyncio.Lock()
+        self._active_batch: _MailingBatch | None = None
 
         # Глобальный троттл на ВСЕ воркеры: не больше `rate` сообщений/с суммарно.
         # У Telegram лимит ~30/с на бота; держим рассылку ниже (20/с), чтобы всегда
@@ -54,6 +58,7 @@ class Mailer:
                             chat_id=telegram_id,
                             from_chat_id=source_chat_id,
                             message_id=source_message_id,
+                            **({"reply_markup": batch.reply_markup} if batch.reply_markup is not None else {}),
                         )
                         batch.success += 1
                         break
@@ -85,24 +90,32 @@ class Mailer:
         self._tasks.clear()
 
     async def send_to_many(self, users, msg: Message):
-        return await self.send_copy_to_many(users, msg.chat.id, msg.message_id)
+        return await self.send_copy_to_many(users, msg.chat.id, msg.message_id, reply_markup=msg.reply_markup)
 
     async def send_copy_to_many(
         self,
         users,
         source_chat_id: int,
         source_message_id: int,
+        *,
+        reply_markup: InlineKeyboardMarkup | None = None,
     ):
-        users = list(users)
-        if not users:
-            return 0, 0
+        """Send one complete post at a time; users may be an async audience loader."""
+        async with self._batch_lock:
+            # A cancelled caller must not let the next post overtake messages
+            # already being delivered by the workers.
+            if self._active_batch is not None:
+                await self._active_batch.done.wait()
+            users = list(await users() if callable(users) else users)
+            if not users:
+                return 0, 0
 
-        batch = _MailingBatch(remaining=len(users))
-        for user_id in users:
-            await self.queue.put(
-                (user_id, source_chat_id, source_message_id, batch)
-            )
+            batch = _MailingBatch(remaining=len(users), reply_markup=reply_markup)
+            self._active_batch = batch
+            for user_id in users:
+                self.queue.put_nowait(
+                    (user_id, source_chat_id, source_message_id, batch)
+                )
 
-        await batch.done.wait()
-
-        return batch.success, batch.failed
+            await batch.done.wait()
+            return batch.success, batch.failed

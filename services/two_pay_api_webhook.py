@@ -96,6 +96,8 @@ async def _handle(request: web.Request) -> web.Response:
         elif event == "telegram.html.v1":
             await _send_html(bot, payload)
             result = {"delivered": True}
+        elif event == "telegram.html.once.v1":
+            result = await _deliver_html_once(bot, repository, payload)
         elif event == "referral_activated":
             result = await _deliver_referral_reward_once(
                 bot, repository, _referral_reward_event(payload)
@@ -327,7 +329,34 @@ async def _send_test(bot: Bot, recipient_telegram_id: int) -> None:
     )
 
 
-async def _send_html(bot: Bot, payload: dict[str, object]) -> None:
+async def _deliver_html_once(bot: Bot, repository: SQLiteRepository, payload: dict) -> dict[str, bool]:
+    delivery_id = payload.get("delivery_id")
+    if not isinstance(delivery_id, str) or not delivery_id or len(delivery_id) > 200:
+        raise WebhookInputError("delivery_id is required (max 200 characters)")
+    text = payload.get("text")
+    if not isinstance(text, str) or not text:
+        raise WebhookInputError("text is required")
+    chat_id = _nonzero_int(payload.get("chat_id"), "chat_id")
+    if set(payload) != {"delivery_id", "chat_id", "text"}:
+        raise WebhookInputError("Unsupported notification fields")
+    canonical = json.dumps({"chat_id": chat_id, "text": text}, ensure_ascii=False,
+                           sort_keys=True, separators=(",", ":")).encode()
+    claim = await repository.claim_notification_delivery(
+        delivery_id, hashlib.sha256(canonical).hexdigest(), API_DELIVERY_LEASE_SECONDS)
+    if claim == "already_delivered":
+        return {"delivered": True, "already_delivered": True}
+    if claim == "in_progress":
+        raise DeliveryInProgressError
+    try:
+        message_id = await _send_html(bot, {"chat_id": chat_id, "text": text})
+    except Exception as error:
+        await repository.fail_notification_delivery(delivery_id, type(error).__name__)
+        raise
+    await repository.complete_notification_delivery(delivery_id, message_id)
+    return {"delivered": True, "already_delivered": False}
+
+
+async def _send_html(bot: Bot, payload: dict[str, object]) -> int | None:
     text = payload.get("text")
     if not isinstance(text, str) or not text:
         raise WebhookInputError("text is required")
@@ -341,9 +370,10 @@ async def _send_html(bot: Bot, payload: dict[str, object]) -> None:
         options["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Открыть склад", url="https://warehouse.2pay.money"),
         ]])
-    await send_flood_safe(
+    message = await send_flood_safe(
         lambda: bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, **options)
     )
+    return _message_id(message)
 
 
 def _nonzero_int(value: object, name: str) -> int:

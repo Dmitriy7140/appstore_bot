@@ -37,7 +37,7 @@ def _optional_chat_id(name: str, default: str) -> int | None:
     return chat_id
 
 
-# Daily website-sales report. Override the ID in .env or leave it empty to
+# Daily site and TMA sales report. Override the ID in .env or leave it empty to
 # disable the scheduled post entirely.
 DAILY_SALES_REPORT_CHAT_ID = _optional_chat_id(
     "DAILY_SALES_REPORT_CHAT_ID", "-1004486126389"

@@ -19,6 +19,7 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
         request = AsyncMock(
             return_value={
                 "field": "appstore_tr",
+                "source": "site",
                 "sales_rub": 17100,
                 "sales_count": 14,
                 "period_started_at": "2026-08-23T00:20:00+03:00",
@@ -26,14 +27,35 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         with patch("services.two_pay_api_client._request", request):
-            result = await get_daily_sales("appstore_tr", date(2026, 8, 24))
+            result = await get_daily_sales("appstore_tr", date(2026, 8, 24), source="site")
 
-        self.assertEqual(result, DailySales("appstore_tr", sales_rub=17100, sales_count=14))
+        self.assertEqual(
+            result, DailySales("appstore_tr", sales_rub=17100, sales_count=14, source="site")
+        )
         request.assert_awaited_once_with(
             "POST",
             "/v1/bot/daily-sales",
-            json_body={"field": "appstore_tr", "period_end_date": "2026-08-24"},
+            json_body={"field": "appstore_tr", "period_end_date": "2026-08-24", "source": "site"},
         )
+
+    async def test_daily_sales_rejects_unfiltered_or_mismatched_results(self) -> None:
+        for source in (None, "site", "bot"):
+            with self.subTest(source=source):
+                response = {"field": "appstore_tr", "sales_rub": 100, "sales_count": 1}
+                if source is not None:
+                    response["source"] = source
+                with patch("services.two_pay_api_client._request", AsyncMock(return_value=response)):
+                    with self.assertRaises(TwoPayApiError):
+                        await get_daily_sales("appstore_tr", date(2026, 8, 24), source="tma")
+
+    async def test_daily_sales_posts_tma_source(self) -> None:
+        request = AsyncMock(return_value={
+            "field": "appstore_us", "source": "tma", "sales_rub": 200, "sales_count": 2,
+        })
+        with patch("services.two_pay_api_client._request", request):
+            result = await get_daily_sales("appstore_us", date(2026, 8, 24), source="tma")
+        self.assertEqual(result.source, "tma")
+        self.assertEqual(request.await_args.kwargs["json_body"]["source"], "tma")
 
     async def test_marketing_sales_sync_posts_the_same_period_end_date(self) -> None:
         request = AsyncMock(

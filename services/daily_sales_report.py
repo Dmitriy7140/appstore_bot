@@ -1,4 +1,4 @@
-"""Build the daily website-sales post from the authoritative 2PAY API."""
+"""Build the daily site and TMA sales post from the authoritative 2PAY API."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +11,6 @@ from services.two_pay_api_client import DailySales, get_daily_sales
 
 MOSCOW_TIMEZONE = pytz.timezone("Europe/Moscow")
 DAY_CLOSE_TIME = time(0, 20)
-REPORT_FOOTER = "😂😂😂😂😂😂😂😂"
 
 
 def latest_closed_period_end_date(now: datetime | None = None) -> date:
@@ -36,32 +35,55 @@ async def build_daily_sales_report(period_end_date: date | None = None) -> str:
     """Format the report for the last closed day, or the explicit period end."""
     if period_end_date is None:
         period_end_date = latest_closed_period_end_date()
-    turkey, usa = await asyncio.gather(
-        get_daily_sales("appstore_tr", period_end_date),
-        get_daily_sales("appstore_us", period_end_date),
+    site_turkey, site_usa, tma_turkey, tma_usa = await asyncio.gather(
+        get_daily_sales("appstore_tr", period_end_date, source="site"),
+        get_daily_sales("appstore_us", period_end_date, source="site"),
+        get_daily_sales("appstore_tr", period_end_date, source="tma"),
+        get_daily_sales("appstore_us", period_end_date, source="tma"),
     )
-    return format_daily_sales_report(period_end_date, turkey, usa)
+    return format_daily_sales_report(
+        period_end_date, site_turkey, site_usa, tma_turkey, tma_usa
+    )
 
 
 def format_daily_sales_report(
     period_end_date: date,
+    site_turkey: DailySales,
+    site_usa: DailySales,
+    tma_turkey: DailySales,
+    tma_usa: DailySales,
+) -> str:
+    """Render separate source totals and their combined total as Telegram HTML."""
+    report_date = period_end_date - timedelta(days=1)
+    total_rub = sum(
+        sales.sales_rub for sales in (site_turkey, site_usa, tma_turkey, tma_usa)
+    )
+    return "\n\n".join(
+        [
+            _source_report("САЙТ", report_date, site_turkey, site_usa),
+            _source_report("TMA", report_date, tma_turkey, tma_usa),
+            f"💰 <b>Общий итог: {_format_number(total_rub)} ₽</b>",
+        ]
+    )
+
+
+def _source_report(
+    title: str,
+    report_date: date,
     turkey: DailySales,
     usa: DailySales,
 ) -> str:
     """Render a Telegram HTML report; PS stays zero until its API field exists."""
-    report_date = period_end_date - timedelta(days=1)
     total_rub = turkey.sales_rub + usa.sales_rub
     return "\n".join(
         [
-            f"📊 САЙТ <b>Сводка за {report_date:%d.%m.%Y}</b>",
+            f"📊 {title} <b>Сводка за {report_date:%d.%m.%Y} (Автовыдача)</b>",
             "",
             _sales_line("🇹🇷", "App Store Турция", turkey),
             _sales_line("🇺🇸", "App Store США", usa),
             "🎮 <b>Коды PS</b>: 0 код(ов) · 0 ₽",
             "",
-            f"💰 <b>Итого: {_format_number(total_rub)} ₽</b>",
-            "",
-            REPORT_FOOTER,
+            f"💸 <b>Всего: {_format_number(total_rub)} ₽</b>",
         ]
     )
 

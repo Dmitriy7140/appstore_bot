@@ -9,7 +9,7 @@ from services.daily_sales_report import (
     format_daily_sales_report,
     latest_closed_period_end_date,
 )
-from services.two_pay_api_client import DailySales, MarketingSalesSync
+from services.two_pay_api_client import DailySales, MarketingSalesSync, TwoPayApiError
 
 
 class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
@@ -27,34 +27,62 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
     def test_report_has_required_categories_and_total(self) -> None:
         report = format_daily_sales_report(
             date(2026, 8, 24),
-            DailySales("appstore_tr", sales_rub=17100, sales_count=14),
-            DailySales("appstore_us", sales_rub=3190, sales_count=4),
+            DailySales("appstore_tr", sales_rub=17100, sales_count=14, source="site"),
+            DailySales("appstore_us", sales_rub=3190, sales_count=4, source="site"),
+            DailySales("appstore_tr", sales_rub=500, sales_count=1, source="tma"),
+            DailySales("appstore_us", sales_rub=0, sales_count=0, source="tma"),
         )
 
-        self.assertIn("Сводка за 23.08.2026", report)
-        self.assertIn("App Store Турция</b>: 14 код(ов) · 17\u00a0100 ₽", report)
-        self.assertIn("App Store США</b>: 4 код(ов) · 3\u00a0190 ₽", report)
-        self.assertIn("Коды PS</b>: 0 код(ов) · 0 ₽", report)
-        self.assertIn("Итого: 20\u00a0290 ₽", report)
-        self.assertTrue(report.endswith("😂😂😂😂😂😂😂😂"))
+        self.assertEqual(report, "\n".join([
+            "📊 САЙТ <b>Сводка за 23.08.2026 (Автовыдача)</b>",
+            "",
+            "🇹🇷 <b>App Store Турция</b>: 14 код(ов) · 17\u00a0100 ₽",
+            "🇺🇸 <b>App Store США</b>: 4 код(ов) · 3\u00a0190 ₽",
+            "🎮 <b>Коды PS</b>: 0 код(ов) · 0 ₽",
+            "",
+            "💸 <b>Всего: 20\u00a0290 ₽</b>",
+            "",
+            "📊 TMA <b>Сводка за 23.08.2026 (Автовыдача)</b>",
+            "",
+            "🇹🇷 <b>App Store Турция</b>: 1 код(ов) · 500 ₽",
+            "🇺🇸 <b>App Store США</b>: 0 код(ов) · 0 ₽",
+            "🎮 <b>Коды PS</b>: 0 код(ов) · 0 ₽",
+            "",
+            "💸 <b>Всего: 500 ₽</b>",
+            "",
+            "💰 <b>Общий итог: 20\u00a0790 ₽</b>",
+        ]))
 
-    async def test_report_requests_both_api_fields_for_period_end_date(self) -> None:
+    async def test_report_requests_both_fields_for_each_source_and_same_day(self) -> None:
         request = AsyncMock(
             side_effect=[
-                DailySales("appstore_tr", sales_rub=100, sales_count=1),
-                DailySales("appstore_us", sales_rub=200, sales_count=2),
+                DailySales("appstore_tr", sales_rub=100, sales_count=1, source="site"),
+                DailySales("appstore_us", sales_rub=200, sales_count=2, source="site"),
+                DailySales("appstore_tr", sales_rub=300, sales_count=3, source="tma"),
+                DailySales("appstore_us", sales_rub=400, sales_count=4, source="tma"),
             ]
         )
         with patch("services.daily_sales_report.get_daily_sales", request):
-            await build_daily_sales_report(date(2026, 8, 24))
+            report = await build_daily_sales_report(date(2026, 8, 24))
+
+        self.assertIn("Всего: 300 ₽", report)
+        self.assertIn("Всего: 700 ₽", report)
+        self.assertIn("Общий итог: 1\u00a0000 ₽", report)
 
         self.assertCountEqual(
             request.await_args_list,
             [
-                call("appstore_tr", date(2026, 8, 24)),
-                call("appstore_us", date(2026, 8, 24)),
+                call("appstore_tr", date(2026, 8, 24), source="site"),
+                call("appstore_us", date(2026, 8, 24), source="site"),
+                call("appstore_tr", date(2026, 8, 24), source="tma"),
+                call("appstore_us", date(2026, 8, 24), source="tma"),
             ],
         )
+
+    async def test_report_does_not_hide_source_failure_as_zero_sales(self) -> None:
+        with patch("services.daily_sales_report.get_daily_sales", AsyncMock(side_effect=TwoPayApiError)):
+            with self.assertRaises(TwoPayApiError):
+                await build_daily_sales_report(date(2026, 8, 24))
 
     async def test_scheduled_report_syncs_marketing_sheet_for_the_same_day(self) -> None:
         from services import scheduler

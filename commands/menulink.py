@@ -34,16 +34,20 @@ class MenuLinkState(StatesGroup):
     waiting_name = State()   # ждём ввода названия ссылки
 
 
+def menu_link_destinations():
+    return [
+        button
+        for row in service_keyboard("as").inline_keyboard
+        for button in row
+        if button.callback_data and not button.callback_data.endswith(":topup")
+    ]
+
+
 def _dest_keyboard():
     """Кнопки = пункты главного меню, кроме сумм пополнения и url-кнопок."""
     builder = InlineKeyboardBuilder()
-    for row in service_keyboard("as").inline_keyboard:
-        for btn in row:
-            if not btn.callback_data:           # url-кнопки — нечего деплинкать
-                continue
-            if btn.callback_data.endswith(":topup"):   # суммы пополнения не нужны
-                continue
-            builder.button(text=btn.text, callback_data=f"mlink:{btn.callback_data}")
+    for btn in menu_link_destinations():
+        builder.button(text=btn.text, callback_data=f"mlink:{btn.callback_data}")
     builder.adjust(1)
     return builder.as_markup()
 

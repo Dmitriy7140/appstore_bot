@@ -18,6 +18,7 @@ from config.config_env import (
 
 Audience = Literal["all", "paid", "never_paid"]
 DailySalesField = Literal["appstore_tr", "appstore_us"]
+DailySalesSource = Literal["site", "tma"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,7 @@ class DailySales:
     field: DailySalesField
     sales_rub: int
     sales_count: int
+    source: DailySalesSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,19 +154,24 @@ async def get_code_inventory() -> CodeInventoryStock:
 async def get_daily_sales(
     field: DailySalesField,
     period_end_date: date,
+    *,
+    source: DailySalesSource,
 ) -> DailySales:
-    """Return confirmed, non-referral website sales for one Moscow business day."""
+    """Return confirmed, non-referral sales for one source and Moscow day."""
     response = await _request(
         "POST",
         "/v1/bot/daily-sales",
         json_body={
             "field": field,
             "period_end_date": period_end_date.isoformat(),
+            "source": source,
         },
     )
     sales = _parse_daily_sales(response)
     if sales.field != field:
         raise TwoPayApiError("2PAY API returned daily sales for an unexpected field")
+    if sales.source != source:
+        raise TwoPayApiError("2PAY API returned daily sales for an unexpected source")
     return sales
 
 
@@ -245,13 +252,17 @@ def _parse_daily_sales(value: Any) -> DailySales:
     field = value.get("field")
     sales_rub = value.get("sales_rub")
     sales_count = value.get("sales_count")
+    source = value.get("source")
     if (
         field not in {"appstore_tr", "appstore_us"}
+        or source not in ("site", "tma")
         or not _is_non_negative_int(sales_rub)
         or not _is_non_negative_int(sales_count)
     ):
         raise TwoPayApiError("2PAY API returned invalid daily sales")
-    return DailySales(field=field, sales_rub=sales_rub, sales_count=sales_count)
+    return DailySales(
+        field=field, sales_rub=sales_rub, sales_count=sales_count, source=source
+    )
 
 
 def _parse_marketing_sales_sync(value: Any) -> MarketingSalesSync:

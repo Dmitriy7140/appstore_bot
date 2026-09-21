@@ -27,7 +27,37 @@ class DeliveryPayloadConflictError(ValueError):
     """The same delivery ID was reused for a different event payload."""
 
 
-SCHEMA = """
+SCHEDULE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS scheduled_announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    weekday INTEGER NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+    send_time TEXT NOT NULL,
+    audience TEXT NOT NULL CHECK (audience IN ('all', 'paid', 'never_paid')),
+    source_chat_id INTEGER NOT NULL,
+    source_message_id INTEGER NOT NULL CHECK (source_message_id > 0),
+    post_preview TEXT NOT NULL DEFAULT '',
+    post_id TEXT REFERENCES announcement_posts(id),
+    created_by INTEGER NOT NULL CHECK (created_by > 0),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_sent_at TEXT,
+    last_success INTEGER,
+    last_failed INTEGER
+);
+"""
+
+
+SCHEMA = SCHEDULE_SCHEMA + """
+CREATE TABLE IF NOT EXISTS announcement_posts (
+    id TEXT PRIMARY KEY,
+    source_chat_id INTEGER NOT NULL,
+    source_message_id INTEGER NOT NULL CHECK (source_message_id > 0),
+    reply_markup_json TEXT NOT NULL,
+    created_by INTEGER NOT NULL CHECK (created_by > 0),
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS fsm_states (
     bot_id INTEGER NOT NULL,
     chat_id INTEGER NOT NULL,
@@ -42,21 +72,6 @@ CREATE TABLE IF NOT EXISTS fsm_states (
         bot_id, chat_id, user_id, thread_id,
         business_connection_id, destiny
     )
-);
-
-CREATE TABLE IF NOT EXISTS scheduled_announcements (
-    weekday INTEGER PRIMARY KEY CHECK (weekday BETWEEN 0 AND 6),
-    send_time TEXT NOT NULL,
-    audience TEXT NOT NULL CHECK (audience IN ('all', 'paid', 'never_paid')),
-    source_chat_id INTEGER NOT NULL,
-    source_message_id INTEGER NOT NULL CHECK (source_message_id > 0),
-    created_by INTEGER NOT NULL CHECK (created_by > 0),
-    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    last_sent_at TEXT,
-    last_success INTEGER,
-    last_failed INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS telegram_file_cache (
@@ -82,6 +97,19 @@ CREATE TABLE IF NOT EXISTS api_payment_deliveries (
 CREATE TABLE IF NOT EXISTS api_referral_reward_deliveries (
     reward_id TEXT PRIMARY KEY,
     transaction_id TEXT NOT NULL,
+    payload_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'delivered')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_until INTEGER,
+    telegram_message_id INTEGER,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    delivered_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS api_notification_deliveries (
+    delivery_id TEXT PRIMARY KEY,
     payload_sha256 TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'delivered')),
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -122,12 +150,48 @@ class SQLiteRepository:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute("PRAGMA synchronous = NORMAL")
         connection.executescript(SCHEMA)
+        self._migrate_schedules(connection)
         # Cleanup for databases created by the short-lived local_users draft.
         # API PostgreSQL is the only user registry.
         connection.execute("DROP TABLE IF EXISTS local_users")
-        connection.execute("PRAGMA user_version = 1")
+        connection.execute("PRAGMA user_version = 3")
         connection.commit()
         self._connection = connection
+
+    @staticmethod
+    def _migrate_schedules(connection: sqlite3.Connection) -> None:
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(scheduled_announcements)")
+        }
+        if "id" in columns:
+            if "post_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE scheduled_announcements ADD COLUMN post_id TEXT REFERENCES announcement_posts(id)"
+                )
+            return
+        # Rebuild the old weekday-primary-key table atomically, preserving posts
+        # and delivery history. AUTOINCREMENT keeps stale buttons/jobs from
+        # ever referring to a different post after a deletion.
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "ALTER TABLE scheduled_announcements RENAME TO scheduled_announcements_legacy"
+            )
+            connection.execute(SCHEDULE_SCHEMA)
+            connection.execute(
+                """
+                INSERT INTO scheduled_announcements (
+                    id, weekday, send_time, audience, source_chat_id, source_message_id,
+                    created_by, enabled, created_at, updated_at,
+                    last_sent_at, last_success, last_failed
+                )
+                SELECT weekday + 1, weekday, send_time, audience, source_chat_id, source_message_id,
+                       created_by, enabled, created_at, updated_at,
+                       last_sent_at, last_success, last_failed
+                FROM scheduled_announcements_legacy
+                """
+            )
+            connection.execute("DROP TABLE scheduled_announcements_legacy")
 
     async def close(self) -> None:
         async with self._lock:
@@ -233,18 +297,22 @@ class SQLiteRepository:
             self._fsm_key(key),
         )
 
-    async def list_schedules(self) -> list[dict[str, Any]]:
+    async def list_schedules(self, weekday: int | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM scheduled_announcements WHERE enabled = 1"
+        params = () if weekday is None else (weekday,)
+        if weekday is not None:
+            query += " AND weekday = ?"
         async with self._lock:
             rows = self._db().execute(
-                "SELECT * FROM scheduled_announcements WHERE enabled = 1 ORDER BY weekday"
+                query + " ORDER BY weekday, send_time, id", params
             ).fetchall()
         return [self._schedule_row(row) for row in rows]
 
-    async def get_schedule(self, weekday: int) -> dict[str, Any] | None:
+    async def get_schedule(self, schedule_id: int) -> dict[str, Any] | None:
         async with self._lock:
             row = self._db().execute(
-                "SELECT * FROM scheduled_announcements WHERE weekday = ? AND enabled = 1",
-                (weekday,),
+                "SELECT * FROM scheduled_announcements WHERE id = ? AND enabled = 1",
+                (schedule_id,),
             ).fetchone()
         return None if row is None else self._schedule_row(row)
 
@@ -257,76 +325,122 @@ class SQLiteRepository:
         source_chat_id: int,
         source_message_id: int,
         created_by: int,
+        post_preview: str = "",
+        schedule_id: int | None = None,
+        post_id: str | None = None,
+        posts: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if weekday not in range(7) or audience not in {"all", "paid", "never_paid"}:
             raise ValueError("Invalid schedule weekday or audience")
         now = _utc_now()
+        values = (
+            weekday, send_time.strftime("%H:%M:%S"), audience,
+            source_chat_id, source_message_id, post_preview, post_id, created_by,
+        )
         async with self._lock:
-            self._db().execute(
-                """
-                INSERT INTO scheduled_announcements (
-                    weekday, send_time, audience, source_chat_id,
-                    source_message_id, created_by, enabled, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-                ON CONFLICT(weekday) DO UPDATE SET
-                    send_time = excluded.send_time,
-                    audience = excluded.audience,
-                    source_chat_id = excluded.source_chat_id,
-                    source_message_id = excluded.source_message_id,
-                    created_by = excluded.created_by,
-                    enabled = 1,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    weekday,
-                    send_time.strftime("%H:%M:%S"),
-                    audience,
-                    source_chat_id,
-                    source_message_id,
-                    created_by,
-                    now,
-                    now,
-                ),
-            )
-            self._db().commit()
-        result = await self.get_schedule(weekday)
+            with self._db():
+                self._insert_announcement_posts(posts or [], created_by)
+                if schedule_id is None:
+                    cursor = self._db().execute(
+                        """
+                        INSERT INTO scheduled_announcements (
+                            weekday, send_time, audience, source_chat_id,
+                            source_message_id, post_preview, post_id, created_by, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (*values, now, now),
+                    )
+                    schedule_id = cursor.lastrowid
+                else:
+                    cursor = self._db().execute(
+                        """
+                        UPDATE scheduled_announcements
+                        SET weekday = ?, send_time = ?, audience = ?, source_chat_id = ?,
+                            source_message_id = ?, post_preview = ?, post_id = ?, created_by = ?, updated_at = ?
+                        WHERE id = ? AND enabled = 1
+                        """,
+                        (*values, now, schedule_id),
+                    )
+                    if not cursor.rowcount:
+                        raise LookupError("Scheduled announcement no longer exists")
+        result = await self.get_schedule(schedule_id)
         if result is None:  # pragma: no cover - protected by the insert above
             raise RuntimeError("Could not store schedule")
         return result
 
-    async def delete_schedule(self, weekday: int) -> bool:
+    async def delete_schedule(self, schedule_id: int) -> bool:
         async with self._lock:
             cursor = self._db().execute(
-                "DELETE FROM scheduled_announcements WHERE weekday = ?", (weekday,)
+                "DELETE FROM scheduled_announcements WHERE id = ?", (schedule_id,)
             )
             self._db().commit()
             return cursor.rowcount > 0
 
-    async def record_schedule_delivery(self, weekday: int, success: int, failed: int) -> None:
+    async def record_schedule_delivery(self, schedule_id: int, success: int, failed: int) -> None:
         async with self._lock:
             self._db().execute(
                 """
                 UPDATE scheduled_announcements
                 SET last_sent_at = ?, last_success = ?, last_failed = ?, updated_at = ?
-                WHERE weekday = ?
+                WHERE id = ?
                 """,
-                (_utc_now(), success, failed, _utc_now(), weekday),
+                (_utc_now(), success, failed, _utc_now(), schedule_id),
             )
             self._db().commit()
 
     @staticmethod
     def _schedule_row(row: sqlite3.Row) -> dict[str, Any]:
         return {
+            "id": row["id"],
             "weekday": row["weekday"],
             "send_time": time.fromisoformat(row["send_time"]),
             "audience": row["audience"],
             "source_chat_id": row["source_chat_id"],
             "source_message_id": row["source_message_id"],
+            "post_preview": row["post_preview"],
+            "post_id": row["post_id"],
             "created_by": row["created_by"],
             "enabled": bool(row["enabled"]),
             "last_sent_at": row["last_sent_at"],
             "last_success": row["last_success"],
             "last_failed": row["last_failed"],
+        }
+
+    def _insert_announcement_posts(self, posts: list[dict[str, Any]], created_by: int) -> None:
+        for post in posts:
+            markup = json.dumps(post["reply_markup"], ensure_ascii=False, sort_keys=True)
+            existing = self._db().execute(
+                "SELECT source_chat_id, source_message_id, reply_markup_json, created_by "
+                "FROM announcement_posts WHERE id = ?", (post["id"],),
+            ).fetchone()
+            values = (post["source_chat_id"], post["source_message_id"], markup, created_by)
+            if existing is not None:
+                if tuple(existing) != values:
+                    raise ValueError("Published announcement posts are immutable")
+                continue
+            self._db().execute(
+                "INSERT INTO announcement_posts "
+                "(id, source_chat_id, source_message_id, reply_markup_json, created_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (post["id"], *values, _utc_now()),
+            )
+
+    async def save_announcement_posts(self, posts: list[dict[str, Any]], created_by: int) -> None:
+        async with self._lock:
+            with self._db():
+                self._insert_announcement_posts(posts, created_by)
+
+    async def get_announcement_post(self, post_id: str) -> dict[str, Any] | None:
+        async with self._lock:
+            row = self._db().execute(
+                "SELECT * FROM announcement_posts WHERE id = ?", (post_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"], "source_chat_id": row["source_chat_id"],
+            "source_message_id": row["source_message_id"],
+            "reply_markup": json.loads(row["reply_markup_json"]),
         }
 
     async def get_file_id(self, cache_key: str) -> str | None:
@@ -405,6 +519,20 @@ class SQLiteRepository:
             transaction_id=transaction_id,
         )
 
+    async def claim_notification_delivery(
+        self, delivery_id: str, payload_sha256: str, lease_seconds: int
+    ) -> DeliveryClaim:
+        return await self._claim_delivery(
+            table="api_notification_deliveries", id_column="delivery_id",
+            delivery_id=delivery_id, payload_sha256=payload_sha256, lease_seconds=lease_seconds,
+        )
+
+    async def complete_notification_delivery(self, delivery_id: str, message_id: int | None) -> None:
+        await self._complete_delivery("api_notification_deliveries", "delivery_id", delivery_id, message_id)
+
+    async def fail_notification_delivery(self, delivery_id: str, error: str) -> None:
+        await self._fail_delivery("api_notification_deliveries", "delivery_id", delivery_id, error)
+
     async def _claim_delivery(
         self,
         *,
@@ -415,7 +543,7 @@ class SQLiteRepository:
         lease_seconds: int,
         transaction_id: str | None = None,
     ) -> DeliveryClaim:
-        if table not in {"api_payment_deliveries", "api_referral_reward_deliveries"}:
+        if table not in {"api_payment_deliveries", "api_referral_reward_deliveries", "api_notification_deliveries"}:
             raise ValueError("Unsupported delivery table")
         now_epoch = int(unix_time.time())
         now = _utc_now()
