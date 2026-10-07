@@ -88,7 +88,10 @@ async def _handle(request: web.Request) -> web.Response:
                 raise WebhookInputError("event and payload are required")
         bot = request.app[BOT_APP_KEY]
         repository = request.app[STORAGE_APP_KEY]
-        if event == "payment.code.v1":
+        if event == "storefront.code.v1":
+            from services.storefront_delivery import deliver_storefront_code
+            result = await deliver_storefront_code(bot, repository, payload)
+        elif event == "payment.code.v1":
             result = await _deliver_payment_once(bot, repository, _payment_event(payload))
         elif event == "telegram.test.v1":
             await _send_test(bot, _positive_int(payload.get("recipient_telegram_id"), "recipient_telegram_id"))
