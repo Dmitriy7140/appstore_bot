@@ -110,3 +110,18 @@ WAL часть последних записей может находиться
 aiohttp-webhook и короткими запросами к API. Добавьте 1 GB swap как защиту от
 пиков при рассылках. При одновременных больших рассылках лучше 2 GB RAM, но
 PostgreSQL на этой VPS не нужен.
+
+
+## Staging buyer delivery from the shared live Storefront
+
+Run the test bot with its own environment, webhook endpoint/port, and SQLite
+delivery receipt path. `deploy/bot.staging.env.example` documents the settings.
+Set `STOREFRONT_DELIVERY_ENVIRONMENT=staging` explicitly and use only the test
+bot token. Expose its separate authenticated webhook over HTTPS; configure
+the API's `BOT_STAGING_WEBHOOK_URL/TOKEN` to match. Do not start a second polling
+process for an already running test bot. Disable daily reports in the test unit.
+The shared API queues a signed `storefront.code.v1` with
+`delivery_environment=staging`. The receiver checks its configured environment
+before creating a delivery receipt or sending any code. Old production events
+without this field remain production-only. The delivery ID remains stable across
+callback retries and restarts; code messages use the existing durable ledger.

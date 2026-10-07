@@ -39,7 +39,7 @@ class StorefrontDeliveryHttpTests(unittest.IsolatedAsyncioTestCase):
         from repository.sqlite_storage import SQLiteRepository
         from services import two_pay_api_webhook as webhook
         bot=SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=42)))
-        with tempfile.TemporaryDirectory() as temp, patch.object(webhook,'TWO_PAY_API_WEBHOOK_TOKEN','secret'):
+        with tempfile.TemporaryDirectory() as temp, patch.object(webhook,'TWO_PAY_API_WEBHOOK_TOKEN','secret'), patch.object(webhook,'STOREFRONT_DELIVERY_ENVIRONMENT','production'):
             for iteration in range(2):
                 repo=SQLiteRepository(Path(temp)/'bot.sqlite')
                 await repo.open()
@@ -60,3 +60,41 @@ class StorefrontDeliveryHttpTests(unittest.IsolatedAsyncioTestCase):
                     await repo.close()
         self.assertEqual(bot.send_message.await_count,1)
         self.assertEqual(bot.send_message.call_args.args[0],123)
+
+
+class DeliveryEnvironmentTests(unittest.TestCase):
+    def test_staging_requires_an_explicit_environment_and_production_preserves_legacy_events(self):
+        self.assertEqual(buyer_notification(payload())["chat_id"], 123)
+        self.assertEqual(buyer_notification(payload(delivery_environment="staging"), expected_environment="staging")["chat_id"], 123)
+        for body, expected in [(payload(), "staging"), (payload(delivery_environment="staging"), "production"),
+                               (payload(delivery_environment="unknown"), "production")]:
+            with self.assertRaises(WebhookInputError):
+                buyer_notification(body, expected_environment=expected)
+
+
+class DeliveryEnvironmentHttpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_wrong_receiver_rejects_even_an_authenticated_event_before_sending(self):
+        import hashlib, hmac, json, tempfile, time
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from aiohttp import ClientSession
+        from aiohttp.test_utils import TestServer
+        from repository.sqlite_storage import SQLiteRepository
+        from services import two_pay_api_webhook as webhook
+        for role, source in [("production", "staging"), ("staging", "production")]:
+            bot = SimpleNamespace(send_message=AsyncMock())
+            with tempfile.TemporaryDirectory() as temp, patch.object(webhook, "TWO_PAY_API_WEBHOOK_TOKEN", "secret"), patch.object(webhook, "STOREFRONT_DELIVERY_ENVIRONMENT", role):
+                repo = SQLiteRepository(Path(temp)/"bot.sqlite")
+                await repo.open()
+                try:
+                    async with TestServer(webhook.build_app(bot, repo)) as server, ClientSession() as session:
+                        raw = json.dumps({"event": "storefront.code.v1", "payload": payload(delivery_environment=source)}).encode()
+                        stamp = str(int(time.time()))
+                        signature = hmac.new(b"secret", stamp.encode()+b"."+raw, hashlib.sha256).hexdigest()
+                        response = await session.post(server.make_url(webhook.TWO_PAY_API_WEBHOOK_PATH), data=raw,
+                            headers={"X-2PAY-Timestamp": stamp, "X-2PAY-Signature": "sha256="+signature})
+                        self.assertEqual(response.status, 400)
+                        bot.send_message.assert_not_awaited()
+                finally:
+                    await repo.close()

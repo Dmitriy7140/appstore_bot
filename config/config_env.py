@@ -15,6 +15,11 @@ load_dotenv()
 TEST_MODE = getenv("TEST_MODE", "False").strip().lower() == "true"
 BOT_TOKEN = getenv("TEST_BOT_TOKEN") if TEST_MODE else getenv("BOT_TOKEN")
 BOT_URL = getenv("TEST_BOT_URL") if TEST_MODE else getenv("BOT_URL")
+STOREFRONT_DELIVERY_ENVIRONMENT = getenv(
+    "STOREFRONT_DELIVERY_ENVIRONMENT", "staging" if TEST_MODE else "production"
+).strip()
+if STOREFRONT_DELIVERY_ENVIRONMENT not in ("production", "staging"):
+    raise ValueError("STOREFRONT_DELIVERY_ENVIRONMENT must be production or staging")
 ADMIN_CHAT_ID = getenv("ADMIN_CHAT_ID")
 ADMIN_IDS = [
     int(value)

@@ -5,12 +5,15 @@ import html
 import re
 
 
-def buyer_notification(payload: dict) -> dict:
+def buyer_notification(payload: dict, *, expected_environment: str = "production") -> dict:
     from services.two_pay_api_webhook import WebhookInputError, _positive_int
 
     expected = {"delivery_id", "invoice_id", "recipient_telegram_id", "code", "product_type", "region", "nominal", "currency"}
-    if set(payload) != expected:
+    if set(payload) not in (expected, expected | {"delivery_environment"}):
         raise WebhookInputError("Invalid Storefront buyer fields")
+    environment = payload.get("delivery_environment", "production")
+    if expected_environment not in ("production", "staging") or environment != expected_environment:
+        raise WebhookInputError("Storefront buyer delivery targets another environment")
     invoice_id = _positive_int(payload["invoice_id"], "invoice_id")
     recipient = _positive_int(payload["recipient_telegram_id"], "recipient_telegram_id")
     nominal = _positive_int(payload["nominal"], "nominal")
@@ -37,6 +40,7 @@ def buyer_notification(payload: dict) -> dict:
     return {"delivery_id": delivery_id, "chat_id": recipient, "text": text}
 
 
-async def deliver_storefront_code(bot, repository, payload: dict):
+async def deliver_storefront_code(bot, repository, payload: dict, *, expected_environment: str = "production"):
     from services.two_pay_api_webhook import _deliver_html_once
-    return await _deliver_html_once(bot, repository, buyer_notification(payload))
+    return await _deliver_html_once(
+        bot, repository, buyer_notification(payload, expected_environment=expected_environment))

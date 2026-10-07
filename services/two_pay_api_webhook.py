@@ -22,6 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config.config_env import (
     API_DELIVERY_LEASE_SECONDS,
+    STOREFRONT_DELIVERY_ENVIRONMENT,
     TWO_PAY_API_WEBHOOK_HOST,
     TWO_PAY_API_WEBHOOK_MAX_AGE_SECONDS,
     TWO_PAY_API_WEBHOOK_PATH,
@@ -90,7 +91,8 @@ async def _handle(request: web.Request) -> web.Response:
         repository = request.app[STORAGE_APP_KEY]
         if event == "storefront.code.v1":
             from services.storefront_delivery import deliver_storefront_code
-            result = await deliver_storefront_code(bot, repository, payload)
+            result = await deliver_storefront_code(
+                bot, repository, payload, expected_environment=STOREFRONT_DELIVERY_ENVIRONMENT)
         elif event == "payment.code.v1":
             result = await _deliver_payment_once(bot, repository, _payment_event(payload))
         elif event == "telegram.test.v1":
