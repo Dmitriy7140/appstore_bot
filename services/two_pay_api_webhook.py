@@ -375,6 +375,8 @@ async def _send_html(bot: Bot, payload: dict[str, object]) -> int | None:
         options["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Открыть склад", url="https://warehouse.2pay.money"),
         ]])
+    from services.payment_mentions import name_payment_mentions
+    text = await name_payment_mentions(bot, text)
     message = await send_flood_safe(
         lambda: bot.send_message(chat_id, text, parse_mode=ParseMode.HTML, **options)
     )
