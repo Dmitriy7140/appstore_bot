@@ -12,6 +12,12 @@ RECIPIENT = re.compile(r'(?m)^💬 (?:📧 )?(?:@[A-Za-z0-9_]+ · )?(?:id)?([1-9
 
 async def name_payment_mentions(bot, text: str) -> str:
     if "💳 <b>Оплата" in text:
+        telegram_recipient = RECIPIENT.search(text) is not None or re.search(r'<a href=["\']tg://user\?id=[1-9][0-9]{0,15}["\']>', text) is not None
+        if telegram_recipient and re.search(r'^💳 <b>Оплата [^<]+ \(сайт\)</b>', text):
+            def title(match):
+                label = match.group(1).removesuffix(" (сайт)").removesuffix(" (TMA)")
+                return f"💳 <b>Оплата {label} (TMA)</b>"
+            text = re.sub(r'^💳 <b>Оплата ([^<]+)</b>', title, text, count=1)
         text = RECIPIENT.sub(lambda match: f'💬 <a href="tg://user?id={match.group(1)}">{match.group(1)}</a>', text)
     # Only trusted numeric placeholders are changed. Existing named links stay intact.
     names = {}

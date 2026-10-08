@@ -10,6 +10,7 @@ class PaymentMentionTests(unittest.IsolatedAsyncioTestCase):
         for line in ["💬 📧 123", "💬 id123", "💬 @buyer · id123"]:
             result = await name_payment_mentions(bot, "💳 <b>Оплата App Store</b>\n" + line)
             self.assertIn('<a href="tg://user?id=123">Иван</a>', result)
+            self.assertIn("Оплата App Store</b>", result)
 
     async def test_numeric_link_uses_full_name_and_keeps_target(self):
         bot = SimpleNamespace(get_chat=AsyncMock(return_value=SimpleNamespace(first_name="Иван <", last_name="& Петров", username="buyer")))
@@ -28,3 +29,21 @@ class PaymentMentionTests(unittest.IsolatedAsyncioTestCase):
         bot = SimpleNamespace(get_chat=AsyncMock(side_effect=[SimpleNamespace(username="buyer"), RuntimeError("unavailable")]))
         text = '<a href="tg://user?id=123">123</a> <a href="tg://user?id=456">id456</a>'
         self.assertEqual(await name_payment_mentions(bot, text), '<a href="tg://user?id=123">@buyer</a> <a href="tg://user?id=456">Покупатель</a>')
+
+    async def test_website_email_is_not_reclassified_as_tma(self):
+        bot = SimpleNamespace(get_chat=AsyncMock())
+        text = "💳 <b>Оплата App Store (сайт)</b>\n💬 📧 buyer@example.com"
+        self.assertEqual(await name_payment_mentions(bot, text), text)
+        bot.get_chat.assert_not_called()
+
+    async def test_existing_site_title_with_telegram_recipient_becomes_tma_once(self):
+        bot = SimpleNamespace(get_chat=AsyncMock(return_value=SimpleNamespace(first_name="Иван")))
+        text = '💳 <b>Оплата App Store (сайт)</b>\n💬 <a href="tg://user?id=123">123</a>'
+        once = await name_payment_mentions(bot, text)
+        self.assertIn("Оплата App Store (TMA)", once)
+        self.assertEqual(await name_payment_mentions(bot, once), once)
+
+    async def test_raw_storefront_telegram_recipient_has_tma_title(self):
+        bot = SimpleNamespace(get_chat=AsyncMock(return_value=SimpleNamespace(first_name="Иван")))
+        result = await name_payment_mentions(bot, "💳 <b>Оплата App Store (сайт)</b>\n💬 📧 123")
+        self.assertIn("Оплата App Store (TMA)", result)
