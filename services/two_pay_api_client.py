@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dataclasses import dataclass
 from typing import Any, Literal
 
 import aiohttp
 
+from services.sales_period import calendar_sales_period
 from config.config_env import (
     TWO_PAY_API_AUDIENCE_TOKEN,
     TWO_PAY_API_BASE_URL,
@@ -17,7 +18,7 @@ from config.config_env import (
 
 
 Audience = Literal["all", "paid", "never_paid"]
-DailySalesField = Literal["appstore_tr", "appstore_us"]
+DailySalesField = Literal["appstore_tr", "appstore_us", "ps_codes"]
 DailySalesSource = Literal["site", "tma"]
 
 
@@ -172,13 +173,14 @@ async def get_daily_sales(
         raise TwoPayApiError("2PAY API returned daily sales for an unexpected field")
     if sales.source != source:
         raise TwoPayApiError("2PAY API returned daily sales for an unexpected source")
+    _validate_sales_period(response, period_end_date)
     return sales
 
 
 async def sync_daily_marketing_sales(
     period_end_date: date,
 ) -> MarketingSalesSync:
-    """Write the combined App Store sales for one Moscow day to Google Sheets."""
+    """Write the combined App Store and PlayStation sales for one Moscow day to Google Sheets."""
     response = await _request(
         "POST",
         "/v1/bot/daily-sales/marketing-report",
@@ -188,7 +190,22 @@ async def sync_daily_marketing_sales(
     expected_report_date = (period_end_date - timedelta(days=1)).strftime("%d.%m")
     if sales.report_date != expected_report_date:
         raise TwoPayApiError("2PAY API returned marketing sales for an unexpected date")
+    _validate_sales_period(response, period_end_date)
     return sales
+
+
+def _validate_sales_period(value: dict[str, Any], period_end_date: date) -> None:
+    """Reject a shifted, incomplete or differently dated API period."""
+    expected_start, expected_end = calendar_sales_period(period_end_date)
+    try:
+        started_at = datetime.fromisoformat(value["period_started_at"])
+        ended_at = datetime.fromisoformat(value["period_ended_at"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise TwoPayApiError("2PAY API returned invalid sales period") from error
+    if started_at.tzinfo is None or ended_at.tzinfo is None:
+        raise TwoPayApiError("2PAY API returned a sales period without timezone")
+    if started_at != expected_start or ended_at != expected_end:
+        raise TwoPayApiError("2PAY API returned an unexpected Moscow calendar sales period")
 
 
 def _parse_code_inventory(value: Any) -> CodeInventoryStock:
@@ -254,7 +271,7 @@ def _parse_daily_sales(value: Any) -> DailySales:
     sales_count = value.get("sales_count")
     source = value.get("source")
     if (
-        field not in {"appstore_tr", "appstore_us"}
+        field not in {"appstore_tr", "appstore_us", "ps_codes"}
         or source not in ("site", "tma")
         or not _is_non_negative_int(sales_rub)
         or not _is_non_negative_int(sales_count)

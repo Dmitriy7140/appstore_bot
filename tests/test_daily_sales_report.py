@@ -16,13 +16,38 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
     def test_last_closed_period_before_and_after_moscow_boundary(self) -> None:
         moscow = pytz.timezone("Europe/Moscow")
         self.assertEqual(
-            latest_closed_period_end_date(moscow.localize(datetime(2026, 8, 24, 0, 19))),
+            latest_closed_period_end_date(moscow.localize(datetime(2026, 8, 23, 23, 59, 59))),
             date(2026, 8, 23),
         )
         self.assertEqual(
-            latest_closed_period_end_date(moscow.localize(datetime(2026, 8, 24, 0, 20))),
+            latest_closed_period_end_date(moscow.localize(datetime(2026, 8, 24, 0, 0))),
             date(2026, 8, 24),
         )
+        self.assertEqual(
+            latest_closed_period_end_date(moscow.localize(datetime(2026, 8, 24, 0, 19))),
+            date(2026, 8, 24),
+        )
+
+    def test_calendar_day_uses_moscow_even_when_now_is_utc(self) -> None:
+        self.assertEqual(
+            latest_closed_period_end_date(pytz.UTC.localize(datetime(2026, 12, 31, 21))),
+            date(2027, 1, 1),
+        )
+        with self.assertRaises(ValueError):
+            latest_closed_period_end_date(datetime(2026, 8, 24))
+
+    async def test_report_at_0010_is_for_the_previous_calendar_day(self) -> None:
+        moscow = pytz.timezone("Europe/Moscow")
+        now = moscow.localize(datetime(2026, 8, 24, 0, 10))
+        request = AsyncMock(return_value=DailySales("appstore_tr", 0, 0, "site"))
+        with (
+            patch("services.daily_sales_report.latest_closed_period_end_date",
+                  return_value=latest_closed_period_end_date(now)),
+            patch("services.daily_sales_report.get_daily_sales", request),
+        ):
+            report = await build_daily_sales_report()
+        self.assertIn("23.08.2026", report)
+        self.assertTrue(all(args.args[1] == date(2026, 8, 24) for args in request.await_args_list))
 
     def test_report_has_required_categories_and_total(self) -> None:
         report = format_daily_sales_report(
@@ -31,6 +56,8 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
             DailySales("appstore_us", sales_rub=3190, sales_count=4, source="site"),
             DailySales("appstore_tr", sales_rub=500, sales_count=1, source="tma"),
             DailySales("appstore_us", sales_rub=0, sales_count=0, source="tma"),
+            DailySales("ps_codes", sales_rub=2500, sales_count=2, source="site"),
+            DailySales("ps_codes", sales_rub=1500, sales_count=1, source="tma"),
         )
 
         self.assertEqual(report, "\n".join([
@@ -38,19 +65,19 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
             "",
             "🇹🇷 <b>App Store Турция</b>: 14 код(ов) · 17\u00a0100 ₽",
             "🇺🇸 <b>App Store США</b>: 4 код(ов) · 3\u00a0190 ₽",
-            "🎮 <b>Коды PS</b>: 0 код(ов) · 0 ₽",
+            "🎮 <b>Коды PS</b>: 2 код(ов) · 2\u00a0500 ₽",
             "",
-            "💸 <b>Всего: 20\u00a0290 ₽</b>",
+            "💸 <b>Всего: 22\u00a0790 ₽</b>",
             "",
             "📊 TMA <b>Сводка за 23.08.2026 (Автовыдача)</b>",
             "",
             "🇹🇷 <b>App Store Турция</b>: 1 код(ов) · 500 ₽",
             "🇺🇸 <b>App Store США</b>: 0 код(ов) · 0 ₽",
-            "🎮 <b>Коды PS</b>: 0 код(ов) · 0 ₽",
+            "🎮 <b>Коды PS</b>: 1 код(ов) · 1\u00a0500 ₽",
             "",
-            "💸 <b>Всего: 500 ₽</b>",
+            "💸 <b>Всего: 2\u00a0000 ₽</b>",
             "",
-            "💰 <b>Общий итог: 20\u00a0790 ₽</b>",
+            "💰 <b>Общий итог: 24\u00a0790 ₽</b>",
         ]))
 
     async def test_report_requests_both_fields_for_each_source_and_same_day(self) -> None:
@@ -60,14 +87,16 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
                 DailySales("appstore_us", sales_rub=200, sales_count=2, source="site"),
                 DailySales("appstore_tr", sales_rub=300, sales_count=3, source="tma"),
                 DailySales("appstore_us", sales_rub=400, sales_count=4, source="tma"),
+                DailySales("ps_codes", sales_rub=50, sales_count=1, source="site"),
+                DailySales("ps_codes", sales_rub=60, sales_count=2, source="tma"),
             ]
         )
         with patch("services.daily_sales_report.get_daily_sales", request):
             report = await build_daily_sales_report(date(2026, 8, 24))
 
-        self.assertIn("Всего: 300 ₽", report)
-        self.assertIn("Всего: 700 ₽", report)
-        self.assertIn("Общий итог: 1\u00a0000 ₽", report)
+        self.assertIn("Всего: 350 ₽", report)
+        self.assertIn("Всего: 760 ₽", report)
+        self.assertIn("Общий итог: 1\u00a0110 ₽", report)
 
         self.assertCountEqual(
             request.await_args_list,
@@ -76,6 +105,8 @@ class DailySalesReportTests(unittest.IsolatedAsyncioTestCase):
                 call("appstore_us", date(2026, 8, 24), source="site"),
                 call("appstore_tr", date(2026, 8, 24), source="tma"),
                 call("appstore_us", date(2026, 8, 24), source="tma"),
+                call("ps_codes", date(2026, 8, 24), source="site"),
+                call("ps_codes", date(2026, 8, 24), source="tma"),
             ],
         )
 

@@ -22,8 +22,8 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
                 "source": "site",
                 "sales_rub": 17100,
                 "sales_count": 14,
-                "period_started_at": "2026-08-23T00:20:00+03:00",
-                "period_ended_at": "2026-08-24T00:20:00+03:00",
+                "period_started_at": "2026-08-23T00:00:00+03:00",
+                "period_ended_at": "2026-08-24T00:00:00+03:00",
             }
         )
         with patch("services.two_pay_api_client._request", request):
@@ -51,6 +51,8 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_daily_sales_posts_tma_source(self) -> None:
         request = AsyncMock(return_value={
             "field": "appstore_us", "source": "tma", "sales_rub": 200, "sales_count": 2,
+            "period_started_at": "2026-08-23T00:00:00+03:00",
+            "period_ended_at": "2026-08-24T00:00:00+03:00",
         })
         with patch("services.two_pay_api_client._request", request):
             result = await get_daily_sales("appstore_us", date(2026, 8, 24), source="tma")
@@ -64,8 +66,8 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
                 "sales_rub": 20290,
                 "sales_count": 18,
                 "marketing_sheet_row": 7,
-                "period_started_at": "2026-08-23T00:20:00+03:00",
-                "period_ended_at": "2026-08-24T00:20:00+03:00",
+                "period_started_at": "2026-08-23T00:00:00+03:00",
+                "period_ended_at": "2026-08-24T00:00:00+03:00",
             }
         )
         with patch("services.two_pay_api_client._request", request):
@@ -85,6 +87,46 @@ class TwoPayApiClientTests(unittest.IsolatedAsyncioTestCase):
             "/v1/bot/daily-sales/marketing-report",
             json_body={"period_end_date": "2026-08-24"},
         )
+
+    async def test_sales_period_accepts_equivalent_utc_boundaries(self) -> None:
+        response = {
+            "field": "appstore_tr", "source": "site", "sales_rub": 100, "sales_count": 1,
+            "period_started_at": "2026-08-22T21:00:00Z",
+            "period_ended_at": "2026-08-23T21:00:00+00:00",
+        }
+        with patch("services.two_pay_api_client._request", AsyncMock(return_value=response)):
+            result = await get_daily_sales("appstore_tr", date(2026, 8, 24), source="site")
+        self.assertEqual(result.sales_rub, 100)
+
+    async def test_both_sales_endpoints_reject_shifted_or_unverifiable_periods(self) -> None:
+        valid_start = "2026-08-23T00:00:00+03:00"
+        valid_end = "2026-08-24T00:00:00+03:00"
+        for start, end in [
+            ("2026-08-23T00:20:00+03:00", "2026-08-24T00:20:00+03:00"),
+            ("2026-08-23T00:00:00Z", "2026-08-24T00:00:00Z"),
+            ("2026-08-23T00:00:00", "2026-08-24T00:00:00"),
+            ("2026-08-22T00:00:00+03:00", "2026-08-23T00:00:00+03:00"),
+            (valid_start, "2026-08-24T00:20:00+03:00"),
+            (valid_end, valid_start),
+            (None, valid_end),
+            (valid_start, None),
+            ("bad-date", valid_end),
+            (123, valid_end),
+        ]:
+            with self.subTest(start=start, end=end):
+                response = {
+                    "field": "appstore_tr", "source": "site", "sales_rub": 100, "sales_count": 1,
+                    "report_date": "23.08", "marketing_sheet_row": 7,
+                }
+                if start is not None:
+                    response["period_started_at"] = start
+                if end is not None:
+                    response["period_ended_at"] = end
+                with patch("services.two_pay_api_client._request", AsyncMock(return_value=response)):
+                    with self.assertRaises(TwoPayApiError):
+                        await get_daily_sales("appstore_tr", date(2026, 8, 24), source="site")
+                    with self.assertRaises(TwoPayApiError):
+                        await sync_daily_marketing_sales(date(2026, 8, 24))
 
     async def test_register_bot_user_posts_expected_contract(self) -> None:
         request = AsyncMock(
